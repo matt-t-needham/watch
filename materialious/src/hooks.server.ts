@@ -65,6 +65,16 @@ export async function handle({ event, resolve }) {
 				event.locals.userId = userId;
 			}
 		}
+
+		// bix: the web client sends its token to our proxy in X-Bix-Auth
+		// (src/lib/fetchProxy.ts); the proxy strips it before forwarding.
+		const bixAuth = event.request.headers.get('x-bix-auth');
+		if (!event.locals.userId && bixAuth && event.url.pathname.startsWith('/api/proxy/')) {
+			const userId = unsign(bixAuth, env.COOKIE_SECRET);
+			if (userId) {
+				event.locals.userId = userId;
+			}
+		}
 	}
 
 	if (!env.RATE_LIMIT_DISABLED && !env.PUBLIC_RATE_LIMIT_DISABLED) {

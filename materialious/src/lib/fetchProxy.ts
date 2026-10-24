@@ -4,6 +4,18 @@ import { timeout } from '$lib/utils';
 import { Capacitor } from '@capacitor/core';
 import sodium from 'libsodium-wrappers-sumo';
 import { isOwnBackend } from './shared';
+import { get } from 'svelte/store';
+import { authTokenStore } from './stores/backend';
+
+// bix: the server's proxy requires a login. Its cookie (Path=/api, 60 days)
+// lapses while the page's token keeps working, which left every proxied
+// request 401 — no videos, no feed. Web requests to our own proxy carry the
+// token in X-Bix-Auth instead; the server accepts it there and strips it
+// before forwarding (never Authorization, which the proxy passes on).
+function proxyAuthToken(): string | undefined {
+	if (Capacitor.getPlatform() !== 'web' || !isOwnBackend()) return undefined;
+	return get(authTokenStore) || undefined;
+}
 
 export const originalFetch = window.fetch;
 export const corsProxyUrl =
@@ -47,10 +59,14 @@ export const fetchProxied = async (
 	if (needsProxying(nonProxiedUrl)) {
 		const proxiedUrl = corsProxyUrl + encodeUrl(nonProxiedUrl);
 
+		const token = proxyAuthToken();
+
 		if (requestInput instanceof Request) {
+			const headers = new Headers(requestInput.headers);
+			if (token) headers.set('X-Bix-Auth', token);
 			requestInput = new Request(proxiedUrl, {
 				method: requestInput.method,
-				headers: requestInput.headers,
+				headers,
 				body: requestInput.body,
 				mode: requestInput.mode,
 				credentials: requestInput.credentials,
@@ -63,6 +79,18 @@ export const fetchProxied = async (
 			});
 		} else {
 			requestInput = proxiedUrl;
+		}
+
+		// Headers passed alongside a Request replace the Request's own
+		// (youtubei.js calls fetch(request, { headers })), so add it here too.
+		if (token && (!(requestInput instanceof Request) || requestOptions?.headers)) {
+			requestOptions = {
+				...requestOptions,
+				headers: {
+					...Object.fromEntries(new Headers(requestOptions?.headers).entries()),
+					'X-Bix-Auth': token
+				}
+			};
 		}
 	}
 
@@ -96,10 +124,13 @@ if (
 	const originalXhrOpen = XMLHttpRequest.prototype.open;
 
 	XMLHttpRequest.prototype.open = function (...args: any[]): void {
-		if (needsProxying(args[1])) {
+		const proxied = needsProxying(args[1]);
+		if (proxied) {
 			args[1] = corsProxyUrl + encodeUrl(args[1]);
 		}
 		// @ts-expect-error args have any type
-		return originalXhrOpen.apply(this, args);
+		originalXhrOpen.apply(this, args);
+		const token = proxied ? proxyAuthToken() : undefined;
+		if (token) this.setRequestHeader('X-Bix-Auth', token);
 	};
 }

@@ -86,6 +86,15 @@ Mark our code with `bix:` comments so a rebase shows what's ours.
   which sends time 0: under a second the TV opens `/tv/<id>` with no
   `?time`, so the player resumes from watch history instead of restarting.
   Both use `sendToTvAndReport` (toast on success or failure).
+- **Web sign-in doesn't depend on the cookie** — Materialious's session
+  cookie (`Path=/api`, 60 days) lapses while the page's token keeps working,
+  so the server's proxy (and `/api/poToken`) answered 401: no videos, no
+  feed. `src/lib/fetchProxy.ts` sends the token as `X-Bix-Auth` on proxied
+  requests (also into headers passed alongside a Request, which replace the
+  Request's own — youtubei.js does that); `src/hooks.server.ts` accepts it
+  only under `/api/proxy/`; the proxy route strips it before forwarding (it
+  forwards `Authorization`, so that header can't be used).
+  `src/lib/web/youtube/minter.ts` uses `backendFetch` (Bearer) for PO tokens.
 - **Back closes the TV panel** — `src/lib/backHandlers.ts`, consulted first by
   the `backButton` listener in `src/routes/+layout.svelte`.
 

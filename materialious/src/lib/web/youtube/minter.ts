@@ -1,5 +1,9 @@
+import { backendFetch } from '$lib/api/backend/request';
+
 export async function webPoTokenMinter(requestKey: string, visitorData: string): Promise<string> {
-	const resp = await fetch('/api/poToken/', {
+	// bix: backendFetch sends the page's login token; plain fetch relied on
+	// the session cookie, which lapses while the token still works (401).
+	const resp = await backendFetch('/api/poToken', {
 		body: JSON.stringify({
 			requestKey,
 			visitorData

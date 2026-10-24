@@ -137,6 +137,7 @@ async function proxyRequest(
 		'sec-ch-ua',
 		'sec-ch-ua-platform',
 		'cookie', // Ensure auth cookies don't become included.
+		'x-bix-auth', // bix: our login token (hooks.server.ts) never leaves for YouTube.
 		'content-type',
 		'content-length'
 	]) {
