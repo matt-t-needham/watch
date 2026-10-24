@@ -36,8 +36,10 @@ it never collides with upstream's app. It's signed with the key in
 `~/.config/bix/watch-tv-apk/` (named after the retired watch_tv app); losing
 that key means uninstalling first, which wipes the TV's sign-in and local
 feed. Android has no self-updater (it's Electron-only), so nothing offers
-upstream's APK. `watch` has no `deploy` entry in bix-infra's `services.toml`
-yet, so the nightly restart doesn't rebuild it: deploy by hand as above.
+upstream's APK. `watch` has `deploy = "watch"` in bix-infra's
+`services.toml`, so the 04:00 nightly restart pulls `origin/main`
+(fast-forward only) and rebuilds the web server: push to deploy, or use the
+dashboard's Redeploy button. The TV app is never built nightly.
 
 ## Git
 
@@ -69,7 +71,8 @@ yet, so the nightly restart doesn't rebuild it: deploy by hand as above.
    `static/nodejsAndroid/`), usually both.
 4. Add a line to **Patches** below for anything new.
 5. Commit (short, plain messages; the user commits or asks Claude to) and
-   `git push`.
+   `git push`. The nightly restart deploys whatever is on `origin/main` to
+   the web server, so don't push web changes you haven't checked.
 
 **Taking a new upstream release**
 
@@ -108,6 +111,10 @@ Push that branch to a GitHub fork of upstream and open a PR from there
 proxy sign-in fix, the TV panel D-pad); `bix:`-specific ones (package ID,
 Watch on TV's room, our user agent) aren't.
 
+**Dependabot** is off: upstream's `.github/dependabot.yml` was removed
+2026-10-24 (it opened update branches on our repo). Upstream's dependency
+bumps arrive with its releases instead.
+
 **Upstream's GitHub workflows** (`.github/workflows/`) came with the fork.
 They run on pull requests to `main` or by hand, never on push, and would fail
 here without upstream's signing and publishing secrets.
@@ -119,6 +126,9 @@ checked against it. Mark our code with `bix:` comments (search `bix:` to
 find every change).
 
 - **Package ID** — `android/app/build.gradle` `applicationId`.
+- **Pinned web base image** — `FullDockerfile`: `node:26.12.1-alpine`
+  instead of upstream's floating `node:26-alpine`; bump it deliberately
+  (and expect a conflict there when upstream changes its base).
 - **Feed: durations, no Shorts** — `src/lib/api/youtubejs/subscriptions.ts`.
   RSS still finds new videos (exact times); entries linked `/shorts/` are
   dropped; for a channel whose RSS has something not yet stored, one Videos
