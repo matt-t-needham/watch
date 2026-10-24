@@ -30,7 +30,9 @@ const CORS_HEADERS = [
 	'Content-Disposition',
 	'__redirect',
 	'__custom_return',
-	'__sid_auth'
+	'__sid_auth',
+	// bix: Watch on TV's room (src/lib/watchOnTv.ts)
+	'X-Bix-Room'
 ].join(', ');
 
 const CORS_ORIGIN = 'https://www.youtube.com';

@@ -1,8 +1,12 @@
 # CLAUDE.md — materialious (bix fork)
 
 Our fork of [Materialious](https://github.com/wardpearce/Materialious)
-(AGPL-3.0), on upstream tag `1.18.10` (moved from 1.18.7 on 2026-10-24; old line kept as branch `bix-on-1.18.7`). Remote `upstream`; our work is
-on branch `bix` as a short patch series on top of the tag. Built two ways: our own
+(AGPL-3.0), on upstream `1.18.10`. Our repo is
+`git@github.com:matt-t-needham/watch.git` (remote `origin`, branch `main`),
+which starts from one squashed commit ("Initial commit - forked from
+mainline"), so it carries no upstream history. Remote `upstream` and the
+local branches `bix` (our patches as separate commits on the 1.18.10 tag)
+and `bix-on-1.18.7` are kept for reference; `main` is where work goes now. Built two ways: our own
 Android TV APK (`bix/build-apk.sh`), and the web server — `watch` in
 bix-infra's compose builds `materialious/` with upstream's `FullDockerfile`
 (`docker compose build watch && docker compose up -d watch` from bix-infra).
@@ -23,8 +27,8 @@ docker build -f bix/android.Dockerfile --target deps -t materialious-deps materi
 ```
 
 The APK is `computer.bix.materialious` (upstream is `us.materialio.app`), so
-it never collides with upstream's app. It's signed with watch_tv's key in
-`~/.config/bix/watch-tv-apk/`; losing that key means uninstalling first, which
+it never collides with upstream's app. It's signed with the key in
+`~/.config/bix/watch-tv-apk/` (named after the retired watch_tv app); losing that key means uninstalling first, which
 wipes the TV's sign-in and local feed. Android has no self-updater (it's
 Electron-only), so nothing offers upstream's APK.
 
@@ -74,7 +78,10 @@ Mark our code with `bix:` comments so a rebase shows what's ours.
   (CORS). The relay replays its last event to new listeners, freshly
   stamped: each send adds a sub-millisecond random offset to the time and
   the TV remembers the last one it handled (localStorage `bixTvLastHandled`).
-  The relay has no login (upstream); the room name is the secret.
+  The relay has no login (upstream); the room name is the secret, and it
+  travels in an `X-Bix-Room` header to `/api/watchParty/bix-tv` (resolved in
+  `src/routes/api/watchParty/[roomId]/+server.ts`, allowed by the in-app
+  proxy's CORS list), so it never appears in a URL or a log.
   Also in each video tile's three-dots menu (`VideoThumbnail.svelte`),
   which sends time 0: under a second the TV opens `/tv/<id>` with no
   `?time`, so the player resumes from watch history instead of restarting.
@@ -95,5 +102,8 @@ Mark our code with `bix:` comments so a rebase shows what's ours.
 - SponsorBlock does nothing until categories are chosen (upstream default:
   none). They sync per account (`sponsorBlockCategoriesv2`). "Manual" segments
   offer Skip in a toast, which the D-pad may not reach — use "automatic" on TV.
-- Rebasing onto a new upstream tag: `git rebase --onto <tag> <current tag> bix`,
-  rebuild, recheck `npm run check`.
+- Taking a new upstream release: `main` has no upstream history to rebase,
+  so apply upstream's changes as a patch:
+  `git fetch upstream tag <new> && git diff 1.18.10 <new> | git apply -3`,
+  resolve conflicts, rebuild both outputs, recheck `npm run check`, and
+  update the version noted above. Never move the server back a version.

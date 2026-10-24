@@ -1,11 +1,12 @@
-// bix: "Watch on TV". A phone or browser sends the video it's playing to the
-// TV app through the watch-party relay (/api/watchParty/<room>), which pushes
-// it to the TV as server-sent events.
+// bix: "Watch on TV". A phone or browser sends a video to the TV app through
+// the watch-party relay, which pushes it to the TV as server-sent events.
 //
 // The room is a random 128-bit name kept in the account's synced settings,
 // which are encrypted on the device, so only this account's signed-in devices
-// know it. The relay itself has no login (EventSource couldn't send the TV's
-// token anyway). Only the TV creates the room; senders use the TV's.
+// know it. It travels in the X-Bix-Room header to /api/watchParty/bix-tv,
+// never in a URL, so it stays out of access and error logs. The relay has no
+// login of its own (upstream); the room name is the secret. Only the TV
+// creates the room; senders use the TV's.
 //
 // The stream is read with fetch rather than EventSource: on Android, fetch
 // goes through the app's local proxy, which supplies the CORS headers a
@@ -53,9 +54,9 @@ export async function sendToTv(videoId: string, currentTime: number): Promise<vo
 	const room = await readRoom();
 	if (!room) throw new NoTvError();
 
-	const resp = await backendFetch(`/api/watchParty/${room}`, {
+	const resp = await backendFetch('/api/watchParty/bix-tv', {
 		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
+		headers: { 'Content-Type': 'application/json', 'X-Bix-Room': room },
 		body: JSON.stringify({
 			event: 'goToVideo',
 			videoId,
@@ -158,8 +159,8 @@ export function listenForTv(onPlay: (videoId: string, time: number) => void): ()
 			try {
 				const room = (await readRoom()) ?? (await createRoom());
 				controller = new AbortController();
-				const resp = await backendFetch(`/api/watchParty/${room}`, {
-					headers: { Accept: 'text/event-stream' },
+				const resp = await backendFetch('/api/watchParty/bix-tv', {
+					headers: { Accept: 'text/event-stream', 'X-Bix-Room': room },
 					signal: controller.signal
 				});
 				if (!resp.ok || !resp.body) throw new Error(`The server answered ${resp.status}`);

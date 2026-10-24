@@ -9,6 +9,19 @@ import {
 	type WatchPartyClient
 } from '$lib/server/watchParty';
 
+// bix: Watch on TV's rooms are named in a header, not the path, so the
+// secret never reaches access or error logs: /api/watchParty/bix-tv with
+// X-Bix-Room: <32 hex>. Other rooms work as upstream.
+const BIX_TV_PATH = 'bix-tv';
+const BIX_ROOM_PATTERN = /^[0-9a-f]{32}$/;
+
+function resolveRoom(pathRoomId: string, headers: Headers): string {
+	if (pathRoomId !== BIX_TV_PATH) return pathRoomId;
+	const room = headers.get('x-bix-room') ?? '';
+	if (!BIX_ROOM_PATTERN.test(room)) throw error(400, 'Missing or malformed X-Bix-Room');
+	return `${BIX_TV_PATH}:${room}`;
+}
+
 const SSE_HEADERS = {
 	'Content-Type': 'text/event-stream',
 	'Cache-Control': 'no-cache, no-transform',
@@ -16,8 +29,8 @@ const SSE_HEADERS = {
 	'X-Accel-Buffering': 'no'
 };
 
-export const GET: RequestHandler = ({ params }) => {
-	const { roomId } = params;
+export const GET: RequestHandler = ({ params, request }) => {
+	const roomId = resolveRoom(params.roomId, request.headers);
 	const clientId = createWatchPartyClientId();
 	const encoder = new TextEncoder();
 
@@ -85,7 +98,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			? (body as { clientId: string }).clientId
 			: undefined;
 
-	if (!broadcastWatchParty(params.roomId, clientId, body)) {
+	if (!broadcastWatchParty(resolveRoom(params.roomId, request.headers), clientId, body)) {
 		return error(400, 'Invalid watch party event');
 	}
 
