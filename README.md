@@ -1,3 +1,42 @@
+# watch — a fork of Materialious
+
+This is a personal fork of [Materialious](https://github.com/wardpearce/Materialious)
+(AGPL-3.0), based on upstream **1.18.10**, running at watch.bix.computer and
+as an Android TV app on an Nvidia Shield. Upstream's README follows below,
+unchanged.
+
+**What's different from upstream**
+
+- **Subscriptions feed:** durations on every video and no Shorts. RSS finds
+  new uploads; each channel's Videos tab (via youtubei.js) supplies durations
+  and leaves out Shorts, live streams and unaired premieres. A Refresh button
+  waits for every channel and names any that failed.
+- **Android TV:**
+  - playback settings in the player (quality, speed)
+  - refresh-rate matching per video, with a stats line (fps, display Hz, dropped frames)
+  - D-pad movement by rows in the info panel, and Back closes the panel
+  - its own package ID (`computer.bix.materialious`), so it installs beside upstream's app
+- **Watch on TV:** a button on the watch page and in each video's ⋮ menu
+  sends the video to the TV app, through a private per-account room on the
+  server's watch-party relay.
+- **Sign-in:** the web app keeps working after the session cookie lapses
+  (the proxy accepts the page's token), and the Android app identifies
+  itself to our server instead of using the desktop-browser disguise
+  everywhere.
+
+**Building**
+
+- Web server: upstream's `materialious/FullDockerfile`, unchanged.
+- Android TV app: `bix/build-apk.sh` builds and signs it in Docker
+  (`bix/android.Dockerfile`).
+- Deploying, the git workflow (fetching and applying new upstream releases,
+  pushing our changes, offering changes back upstream) and the full patch
+  list are in [CLAUDE.md](./CLAUDE.md).
+
+Our changes are marked with `bix:` comments in the code.
+
+---
+
 <div align="center">  <img src="./branding/MaterialiousAppIcon.svg" width="200px" />
   <h1>Materialious</h1>
   <quote>
