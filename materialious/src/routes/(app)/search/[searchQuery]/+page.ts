@@ -1,0 +1,49 @@
+import { getSearch } from '$lib/api/index';
+import type { Channel, HashTag, Playlist, Video } from '$lib/api/model';
+import { excludeDuplicateFeeds } from '$lib/feed';
+import { searchCacheStore } from '$lib/store';
+import { error } from '@sveltejs/kit';
+import { get } from 'svelte/store';
+
+export async function load({ params, url }) {
+	let type: 'playlist' | 'all' | 'video' | 'channel';
+
+	const queryFlag = url.searchParams.get('type');
+	if (queryFlag && ['playlist', 'video', 'channel', 'all'].includes(queryFlag)) {
+		type = queryFlag as 'playlist' | 'all' | 'video' | 'channel';
+	} else {
+		type = 'all';
+	}
+
+	const searchStoreId = type + params.searchQuery;
+	const search = get(searchCacheStore)[searchStoreId];
+
+	if (!search) {
+		try {
+			searchCacheStore.set({
+				...get(searchCacheStore),
+				[searchStoreId]: await getSearch(params.searchQuery, { type: type })
+			});
+		} catch (errorMessage: any) {
+			error(500, errorMessage);
+		}
+	} else {
+		getSearch(params.searchQuery, { type: type }).then((newSearch) => {
+			searchCacheStore.set({
+				[searchStoreId]: excludeDuplicateFeeds(search, newSearch) as (
+					| Channel
+					| Video
+					| Playlist
+					| HashTag
+				)[],
+				...get(searchCacheStore)
+			});
+		});
+	}
+
+	return {
+		slug: params.searchQuery,
+		searchType: type,
+		searchStoreId: searchStoreId
+	};
+}

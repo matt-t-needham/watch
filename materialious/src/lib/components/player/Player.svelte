@@ -1,0 +1,1040 @@
+<script lang="ts">
+	import { page } from '$app/state';
+	import { getBestThumbnail } from '$lib/images';
+	import { videoLength } from '$lib/numbers';
+	import { generateChapterWebVTT, type ParsedDescription } from '$lib/description';
+	import { Capacitor, SystemBars, SystemBarsStyle, SystemBarType } from '@capacitor/core';
+	import { error } from '@sveltejs/kit';
+	import Mousetrap from 'mousetrap';
+	import { CapacitorMusicControls } from 'capacitor-music-controls-plugin';
+	import shaka from 'shaka-player/dist/shaka-player.ui';
+	import { KeepAwake } from '@capgo/capacitor-keep-awake';
+	import { SponsorBlock, type Category, type Segment } from 'sponsorblock-api';
+	import { onDestroy, onMount } from 'svelte';
+	import { _ } from '$lib/i18n';
+	import { get } from 'svelte/store';
+	import { Slider } from 'melt/builders';
+	import type { VideoPlay } from '$lib/api/model';
+	import {
+		playerAlwaysLoopStore,
+		playerAndroidLockOrientation,
+		playerAndroidPauseOnNetworkChange,
+		playerAutoPlayStore,
+		playerDefaultLanguage,
+		playerDefaultPlaybackSpeed,
+		playerPreferredVolumeStore,
+		playerProxyVideosStore,
+		playerSavePlaybackPositionStore,
+		playerState,
+		playerIsInWindowFullscreen,
+		playerYouTubeJsFallback,
+		sponsorBlockCategoriesStore,
+		sponsorBlockDisplayToastStore,
+		sponsorBlockStore,
+		sponsorBlockUrlStore,
+		keybindStore
+	} from '$lib/store';
+	import { setStatusBarColor } from '$lib/theme/index';
+	import { getVideoYTjs } from '$lib/api/youtubejs/video';
+	import {
+		goToNextVideo,
+		goToPreviousVideo,
+		restoreDefaultLanguage,
+		restoreQualityPreference,
+		toggleSubtitles
+	} from '$lib/player/index';
+	import { manifestDomainInclusion } from '$lib/player/manifest';
+	import { injectSabr } from '$lib/player/sabr';
+	import type { SabrStreamingAdapter } from 'googlevideo/sabr-streaming-adapter';
+	import { fade } from 'svelte/transition';
+	import { addToast } from '$lib/components/Toast.svelte';
+	import { getPublicEnv } from '$lib/env';
+	import { isAndroidTv, isMobile } from '$lib/utils';
+	import { isUnrestrictedPlatform, isYTBackend } from '$lib/backend';
+	import { isOwnBackend } from '$lib/shared';
+	import Settings, { setActiveAudioTrack, setActiveVideoTrack } from './settings/Settings.svelte';
+	import CaptionSettings from './settings/CaptionSettings.svelte';
+	import Airplay from './settings/Airplay.svelte';
+	import Pip from './settings/Pip.svelte';
+	import FullscreenToggle from './settings/FullscreenToggle.svelte';
+	import Timeline from './Timeline.svelte';
+	import TouchControls from './TouchControls.svelte';
+	import { Network, type ConnectionStatus } from '@capacitor/network';
+	import { ScreenOrientation, type ScreenOrientationResult } from '@capacitor/screen-orientation';
+	import ClosedCaptions from './ClosedCaptions.svelte';
+	import { getVideoWatchHistory, updateWatchHistory } from '$lib/api';
+
+	interface Props {
+		data: { video: VideoPlay; content: ParsedDescription; playlistId: string | null };
+		currentTime?: number;
+		userManualSeeking?: boolean;
+		isEmbed?: boolean;
+		playerElement?: HTMLMediaElement | undefined;
+		showControls?: boolean;
+		playerIsPip?: boolean;
+		// bix: the TV page's playback settings drive shaka directly.
+		onShakaPlayer?: (player: shaka.Player) => void;
+	}
+
+	let {
+		data,
+		isEmbed = false,
+		playerIsPip = false,
+		playerElement = $bindable(undefined),
+		currentTime = $bindable(0),
+		userManualSeeking = $bindable(false),
+		showControls = false,
+		onShakaPlayer
+	}: Props = $props();
+
+	let segments: Segment[] = $state([]);
+	let segmentManualSkip: Segment | undefined = $state();
+	let watchProgressInterval: ReturnType<typeof setInterval>;
+	let keepAwakeSupported = $state(false);
+
+	async function requestKeepAwake() {
+		if (!keepAwakeSupported) return;
+		try {
+			await KeepAwake.keepAwake();
+		} catch {
+			// Continue regardless
+		}
+	}
+
+	async function releaseKeepAwake() {
+		if (!keepAwakeSupported) return;
+		try {
+			await KeepAwake.allowSleep();
+		} catch {
+			// Continue regardless
+		}
+	}
+
+	let showVideoRetry = $state(false);
+
+	let player: shaka.Player;
+	let sabrAdapter: SabrStreamingAdapter | null;
+
+	let androidInitialNetworkStatus: ConnectionStatus | undefined;
+	let androidOriginalOrigination: ScreenOrientationResult | undefined;
+
+	let playerContainer: HTMLElement;
+	let playerCurrentPlaybackState = $state(false);
+	let playerMaxKnownTime = $state(data.video.lengthSeconds);
+	let playerIsBuffering = $state(false);
+	let playerVolume = $state($playerPreferredVolumeStore);
+	let playerVideoEndTimePretty: string = $state('');
+	let playerIsFullscreen = $state(false);
+	let playerInitalInteract = $state(true);
+
+	const playerVolumeSlider = new Slider({
+		onValueChange: (volumeToSet) => {
+			if (!playerElement) return;
+			showPlayerUI();
+			playerElement.volume = volumeToSet;
+		},
+		value: () => playerVolume,
+		max: 1,
+		min: 0,
+		step: 0.01
+	});
+
+	function saveVolumePreference() {
+		if (!playerElement) return;
+		playerVolume = playerElement.volume;
+		playerPreferredVolumeStore.set(playerElement.volume);
+	}
+
+	function restoreVolumePreference() {
+		if (!playerElement) return;
+		playerElement.volume = $playerPreferredVolumeStore;
+		playerVolume = playerElement.volume;
+	}
+
+	function skipSegment(segment: Segment) {
+		if (!playerElement) return;
+
+		segmentManualSkip = undefined;
+
+		if (Math.round(playerElement.currentTime) >= Math.round(playerElement.duration)) {
+			return;
+		}
+		playerElement.currentTime = segment.endTime + 1;
+		if (!get(sponsorBlockDisplayToastStore)) {
+			addToast({
+				data: {
+					text: `${$_('skipping')} ${segment.category}`
+				}
+			});
+		}
+	}
+
+	async function setupSponsorSkip() {
+		if (!$sponsorBlockUrlStore || !$sponsorBlockCategoriesStore || !$sponsorBlockStore) return;
+		const sponsorBlock = new SponsorBlock('', { baseURL: $sponsorBlockUrlStore });
+
+		const sponsorBlockCategoryKeys = Object.keys($sponsorBlockCategoriesStore);
+
+		if (sponsorBlockCategoryKeys.length === 0) return;
+
+		try {
+			segments = await sponsorBlock.getSegments(
+				data.video.videoId,
+				sponsorBlockCategoryKeys as Category[]
+			);
+		} catch (error) {
+			console.error('Sponsorskip errored with:', error);
+		}
+
+		if (segments.length === 0) return;
+
+		playerElement?.addEventListener('timeupdate', () => {
+			segments.forEach((segment) => {
+				if (!playerElement) return;
+
+				if (
+					playerElement.currentTime >= segment.startTime &&
+					playerElement.currentTime <= segment.endTime
+				) {
+					const segmentTrigger = $sponsorBlockCategoriesStore[segment.category];
+
+					if (segmentTrigger === 'automatic') {
+						skipSegment(segment);
+					} else if (segmentTrigger === 'manual') {
+						if (!segmentManualSkip) {
+							addToast({
+								data: {
+									text: `${$_('upcomingSegment')} ${segment.category}`,
+									action: {
+										action: () => skipSegment(segment),
+										text: $_('skip')
+									}
+								}
+							});
+						}
+						segmentManualSkip = segment;
+					}
+				}
+			});
+		});
+	}
+
+	function loadTimeFromUrl(): boolean {
+		if (player) {
+			const timeGivenUrl = page.url.searchParams.get('time');
+			if (timeGivenUrl && !isNaN(parseFloat(timeGivenUrl))) {
+				if (!playerElement) return false;
+				playerElement.currentTime = Number(timeGivenUrl);
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	$effect(() => {
+		loadTimeFromUrl();
+	});
+
+	function toggleFullscreen() {
+		if (document.fullscreenElement) {
+			document.exitFullscreen();
+			playerIsFullscreen = false;
+		} else {
+			playerContainer.requestFullscreen();
+			playerIsFullscreen = true;
+		}
+	}
+
+	function toggleInWindowFullscreen() {
+		playerIsInWindowFullscreen.update((v) => !v);
+	}
+
+	async function loadVideo() {
+		showVideoRetry = false;
+
+		sabrAdapter = await injectSabr(data.video, player);
+
+		if (data.video.fallbackPatch === 'youtubejs' && !isYTBackend()) {
+			addToast({ data: { text: $_('player.youtubeJsFallBack') } });
+		}
+
+		setupSponsorSkip();
+
+		player.addEventListener('loaded', () => {
+			restoreQualityPreference(player);
+			restoreDefaultLanguage(player);
+
+			setActiveAudioTrack(player);
+			setActiveVideoTrack(player);
+
+			if ($playerAutoPlayStore) playerElement?.play();
+		});
+
+		if (!data.video.liveNow) {
+			if (watchProgressInterval) {
+				clearInterval(watchProgressInterval);
+			}
+			// Auto save watch progress every minute.
+			watchProgressInterval = setInterval(() => savePlayerbackHistory(), 60000);
+
+			let dashUrl: string;
+
+			// Due to CORs issues with redirects, hosted instances of Materialious
+			// dirctly provide the companion instance
+			// while clients can just use the reirect provided by Invidious' API
+			if (getPublicEnv('DEFAULT_COMPANION_INSTANCE')) {
+				dashUrl = `${getPublicEnv('DEFAULT_COMPANION_INSTANCE')}/api/manifest/dash/id/${data.video.videoId}`;
+			} else {
+				if (!data.video.dashUrl) {
+					error(500, 'No dash manifest found');
+				}
+				dashUrl = data.video.dashUrl;
+			}
+
+			if (!data.video.fallbackPatch && (!isUnrestrictedPlatform() || $playerProxyVideosStore)) {
+				dashUrl += '?local=true';
+			}
+
+			if (
+				(Capacitor.getPlatform() === 'android' ||
+					(isOwnBackend() && Capacitor.getPlatform() === 'web')) &&
+				$playerProxyVideosStore &&
+				!data.video.fallbackPatch
+			) {
+				const manifest = await manifestDomainInclusion(dashUrl);
+				await player.load(manifest, await getPlaybackHistory());
+			} else {
+				await player.load(dashUrl, await getPlaybackHistory());
+			}
+
+			if (data.content.timestamps) {
+				try {
+					player.addChaptersTrack(
+						`data:text/vtt;base64,${btoa(generateChapterWebVTT(data.content.timestamps, playerMaxKnownTime))}`,
+						get(playerDefaultLanguage)
+					);
+				} catch {
+					// Continue regardless
+				}
+			}
+		} else {
+			if (data.video.fallbackPatch === 'youtubejs') {
+				if (!data.video.dashUrl) {
+					error(500, 'No dash manifest found');
+					return;
+				}
+				await player.load(data.video.dashUrl);
+			} else {
+				await player.load(data.video.hlsUrl + '?local=true');
+			}
+		}
+
+		if ($playerDefaultPlaybackSpeed && playerElement) {
+			playerElement.playbackRate = $playerDefaultPlaybackSpeed;
+		}
+	}
+
+	async function reloadVideo() {
+		showVideoRetry = false;
+		data.video = await getVideoYTjs(data.video.videoId);
+		await loadVideo();
+	}
+
+	function toggleVideoPlaybackStatus() {
+		if (playerCurrentPlaybackState) {
+			playerElement?.pause();
+		} else {
+			playerElement?.play();
+		}
+	}
+
+	let showPlayerUiTimeout: ReturnType<typeof setTimeout>;
+	function showPlayerUI() {
+		showControls = true;
+
+		if (showPlayerUiTimeout) clearTimeout(showPlayerUiTimeout);
+
+		showPlayerUiTimeout = setTimeout(() => {
+			showControls = false;
+			playerInitalInteract = true;
+		}, 5000);
+	}
+
+	async function onAndroidFullscreenChange() {
+		const videoFormats = data.video.adaptiveFormats.filter((format) =>
+			format.type.startsWith('video/')
+		);
+
+		const isFullScreen = !!document.fullscreenElement;
+
+		if (isFullScreen) {
+			// Ensure bar color is black while in fullscreen
+			await SystemBars.setStyle({ style: SystemBarsStyle.Light });
+			await SystemBars.hide({
+				bar: SystemBarType.NavigationBar
+			});
+			await SystemBars.hide({
+				bar: SystemBarType.StatusBar
+			});
+		} else {
+			await setStatusBarColor();
+		}
+
+		if (!$playerAndroidLockOrientation) return;
+
+		if (isFullScreen && videoFormats[0]?.size) {
+			const widthHeight = videoFormats[0].size.split('x');
+
+			if (widthHeight.length !== 2) return;
+
+			if (Number(widthHeight[0]) > Number(widthHeight[1])) {
+				await ScreenOrientation.lock({ orientation: 'landscape' });
+			} else {
+				await ScreenOrientation.lock({ orientation: 'portrait' });
+			}
+		} else {
+			await ScreenOrientation.lock({
+				orientation: (androidOriginalOrigination as ScreenOrientationResult).type
+			});
+		}
+	}
+
+	async function androidHandleRotate() {
+		if (
+			Capacitor.getPlatform() !== 'android' ||
+			data.video.adaptiveFormats.length === 0 ||
+			isAndroidTv()
+		)
+			return;
+
+		androidOriginalOrigination = await ScreenOrientation.orientation();
+
+		document.addEventListener('fullscreenchange', onAndroidFullscreenChange);
+	}
+
+	onMount(async () => {
+		shaka.polyfill.installAll();
+		if (!shaka.Player.isBrowserSupported()) {
+			addToast({
+				data: {
+					text: 'Browser not supported for playback.'
+				}
+			});
+			return;
+		}
+
+		player = new shaka.Player();
+		onShakaPlayer?.(player);
+
+		player.configure({
+			abr: {
+				enabled: true
+			},
+			streaming: {
+				failureCallback: (error: shaka.util.Error) => {
+					console.error('Streaming failure:', error);
+					player.retryStreaming(5);
+				},
+				bufferingGoal: 120,
+				rebufferingGoal: 2,
+				bufferBehind: 300,
+				// Jump over small gaps in the buffer instead of stalling
+				// until the user manually seeks.
+				gapDetectionThreshold: 1,
+				retryParameters: {
+					maxAttempts: 4,
+					fuzzFactor: 0.5,
+					timeout: 15 * 1000
+				}
+			}
+		});
+
+		if (playerElement) playerElement.loop = $playerAlwaysLoopStore;
+
+		if ($playerState) {
+			playerState.set({ ...$playerState, playerElement: playerElement });
+		}
+
+		// Change instantly to stop video from being loud for a second
+		restoreVolumePreference();
+
+		if (playerElement) await player.attach(playerElement);
+
+		player?.addEventListener('error', (event) => {
+			const error = (event as CustomEvent).detail as shaka.util.Error;
+			console.error('Player error:', error);
+		});
+
+		playerElement?.addEventListener('volumechange', saveVolumePreference);
+
+		const { isSupported } = await KeepAwake.isSupported();
+		keepAwakeSupported = isSupported;
+
+		document.addEventListener('visibilitychange', async () => {
+			if (document.visibilityState === 'visible' && !playerElement?.paused) {
+				await requestKeepAwake();
+			}
+		});
+
+		if (Capacitor.getPlatform() === 'android') {
+			await androidHandleRotate();
+
+			androidInitialNetworkStatus = await Network.getStatus();
+
+			Network.addListener('networkStatusChange', (networkStatus) => {
+				if (
+					androidInitialNetworkStatus?.connectionType !== networkStatus.connectionType &&
+					$playerAndroidPauseOnNetworkChange
+				) {
+					playerElement?.pause();
+					addToast({ data: { text: $_('player.pauseOnNetworkChange'), icon: 'wifi_off' } });
+				}
+			});
+
+			await CapacitorMusicControls.create({
+				track: data.video.title,
+				artist: data.video.author,
+				cover: getBestThumbnail(data.video.videoThumbnails, 800, 800),
+				hasPrev: data.playlistId !== null,
+				hasNext: data.playlistId !== null,
+				isPlaying: true,
+				hasClose: true,
+				dismissable: true,
+				playIcon: '',
+				pauseIcon: '',
+				prevIcon: '',
+				nextIcon: '',
+				closeIcon: '',
+				notificationIcon: '',
+				ticker: `Now playing "${data.video.title}"`
+			});
+
+			// @ts-expect-error: Is handle correctly via https://github.com/ingageco/capacitor-music-controls-plugin
+			document.addEventListener('controlsNotification', (event: { message: string }) => {
+				if (
+					event.message === 'music-controls-headset-unplugged' ||
+					event.message === 'music-controls-pause'
+				) {
+					playerElement?.pause();
+					return;
+				} else if (event.message === 'music-controls-play') {
+					playerElement?.play();
+					return;
+				}
+
+				if (data.playlistId) {
+					if (event.message === 'music-controls-next') {
+						goToNextVideo(data.video, data.playlistId);
+					} else if (event.message === 'music-controls-previous') {
+						goToPreviousVideo(data.playlistId);
+					}
+				}
+			});
+
+			playerElement?.addEventListener('play', () => {
+				CapacitorMusicControls.updateIsPlaying({ isPlaying: true });
+			});
+
+			playerElement?.addEventListener('pause', () => {
+				CapacitorMusicControls.updateIsPlaying({ isPlaying: false });
+			});
+		} else if ('mediaSession' in navigator) {
+			const metadataArtwork: MediaImage[] = [];
+			data.video.videoThumbnails.forEach((thumbnail) => {
+				metadataArtwork.push({
+					type: 'image/jpeg',
+					sizes: `${thumbnail.width}x${thumbnail.height}`,
+					src: thumbnail.url
+				});
+			});
+
+			navigator.mediaSession.metadata = new MediaMetadata({
+				title: data.video.title,
+				artist: data.video.author,
+				artwork: metadataArtwork
+			});
+
+			navigator.mediaSession.setActionHandler('play', () => playerElement?.play());
+
+			navigator.mediaSession.setActionHandler('pause', () => playerElement?.pause());
+
+			navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+				if (!playerElement) return;
+
+				playerElement.currentTime = Math.max(
+					playerElement.currentTime - (details.seekOffset || 10),
+					0
+				);
+			});
+
+			navigator.mediaSession.setActionHandler('seekforward', (details) => {
+				if (!playerElement) return;
+
+				playerElement.currentTime = Math.min(
+					playerElement.currentTime + (details.seekOffset || 10),
+					playerElement.duration
+				);
+			});
+
+			navigator.mediaSession.setActionHandler('seekto', (details) => {
+				if (!playerElement) return;
+
+				if (details.fastSeek && 'fastSeek' in playerElement) {
+					playerElement.fastSeek(details.seekTime ?? 0);
+				} else {
+					playerElement.currentTime = details.seekTime ?? 0;
+				}
+			});
+
+			navigator.mediaSession.setActionHandler('stop', () => {
+				if (!playerElement) return;
+				playerElement.pause();
+				playerElement.currentTime = 0;
+			});
+
+			if (data.playlistId) {
+				navigator.mediaSession.setActionHandler('previoustrack', () => {
+					goToPreviousVideo(data.playlistId);
+				});
+
+				navigator.mediaSession.setActionHandler('nexttrack', async () => {
+					await goToNextVideo(data.video, data.playlistId);
+				});
+			}
+		}
+
+		Mousetrap.bind($keybindStore.togglePlay, () => {
+			if (!playerElement) return;
+
+			if (playerElement.paused) {
+				playerElement.play();
+			} else {
+				playerElement.pause();
+			}
+
+			showPlayerUI();
+
+			return false;
+		});
+
+		if (!isAndroidTv()) {
+			Mousetrap.bind($keybindStore.skipSponsor, () => {
+				if (segmentManualSkip) {
+					skipSegment(segmentManualSkip);
+					showPlayerUI();
+				}
+			});
+		}
+
+		Mousetrap.bind($keybindStore.toggleSubtitles, () => {
+			toggleSubtitles();
+			showPlayerUI();
+			return false;
+		});
+
+		Mousetrap.bind($keybindStore.toggleFullscreen, () => {
+			toggleFullscreen();
+			showPlayerUI();
+			return false;
+		});
+
+		Mousetrap.bind($keybindStore.speedDown, () => {
+			if (!playerElement) return;
+			playerElement.playbackRate = playerElement.playbackRate - 0.25;
+			showPlayerUI();
+			return false;
+		});
+
+		Mousetrap.bind($keybindStore.speedUp, () => {
+			if (!playerElement) return;
+			playerElement.playbackRate = playerElement.playbackRate + 0.25;
+			showPlayerUI();
+			return false;
+		});
+
+		Mousetrap.bind($keybindStore.frameBack, () => {
+			if (!playerElement) return;
+
+			const currentTrack = player.getVariantTracks().find((track) => track.active);
+			const frameTime = 1 / (currentTrack?.frameRate || 30);
+			playerElement.currentTime -= frameTime;
+
+			showPlayerUI();
+		});
+
+		Mousetrap.bind($keybindStore.frameForward, () => {
+			if (!playerElement) return;
+
+			const currentTrack = player.getVariantTracks().find((track) => track.active);
+			const frameTime = 1 / (currentTrack?.frameRate || 30);
+			playerElement.currentTime += frameTime;
+
+			showPlayerUI();
+		});
+
+		playerElement?.addEventListener('pause', async () => {
+			playerCurrentPlaybackState = false;
+			playerIsBuffering = false;
+			savePlayerbackHistory();
+			await releaseKeepAwake();
+			showPlayerUI();
+		});
+
+		playerElement?.addEventListener('ended', async () => {
+			playerCurrentPlaybackState = false;
+			playerIsBuffering = false;
+			await releaseKeepAwake();
+			await goToNextVideo(data.video, data.playlistId);
+		});
+
+		playerElement?.addEventListener('playing', async () => {
+			playerCurrentPlaybackState = true;
+			playerIsBuffering = false;
+			await requestKeepAwake();
+		});
+
+		playerElement?.addEventListener('waiting', () => {
+			playerCurrentPlaybackState = false;
+			playerIsBuffering = true;
+			showPlayerUI();
+		});
+
+		playerElement?.addEventListener('timeupdate', () => {
+			if (!playerElement) return;
+
+			if (!userManualSeeking) {
+				currentTime = playerElement.currentTime ?? 0;
+			}
+
+			if (playerMaxKnownTime === 0 || currentTime > playerMaxKnownTime) {
+				playerMaxKnownTime = Number(playerElement.currentTime);
+			}
+
+			const remainingTime = playerMaxKnownTime - playerElement.currentTime;
+			const videoEnds = new Date(Date.now() + remainingTime * 1000);
+
+			playerVideoEndTimePretty = videoEnds.toLocaleTimeString([], {
+				hour: '2-digit',
+				minute: '2-digit',
+				hour12: true
+			});
+		});
+
+		try {
+			await loadVideo();
+		} catch (error: unknown) {
+			console.error(error);
+
+			if (
+				!isUnrestrictedPlatform() ||
+				data.video.fallbackPatch === 'youtubejs' ||
+				(error as shaka.extern.Error).code !== 1001
+			)
+				return;
+
+			showVideoRetry = true;
+			if ($playerYouTubeJsFallback) {
+				await reloadVideo();
+			}
+		}
+	});
+
+	async function getPlaybackHistory(): Promise<number> {
+		if (loadTimeFromUrl() || !$playerSavePlaybackPositionStore) return 0;
+
+		let toSetTime = 0;
+
+		const watchHistory = await getVideoWatchHistory(data.video.videoId);
+		if (watchHistory && watchHistory.progress < playerMaxKnownTime - 10) {
+			toSetTime = watchHistory.progress;
+		}
+
+		return toSetTime;
+	}
+
+	function savePlayerbackHistory() {
+		if (data.video.liveNow || !$playerSavePlaybackPositionStore || !playerElement) return;
+
+		updateWatchHistory(data.video.videoId, playerElement.currentTime);
+	}
+
+	onDestroy(async () => {
+		await releaseKeepAwake();
+
+		if (Capacitor.getPlatform() === 'android') {
+			await setStatusBarColor();
+			await CapacitorMusicControls.destroy();
+
+			document.removeEventListener('fullscreenchange', onAndroidFullscreenChange);
+
+			if (androidOriginalOrigination) {
+				await ScreenOrientation.lock({
+					orientation: androidOriginalOrigination.type
+				});
+			}
+		}
+
+		try {
+			savePlayerbackHistory();
+		} catch {
+			// Continue regardless of error
+		}
+
+		Mousetrap.unbind([
+			$keybindStore.togglePlay,
+			$keybindStore.toggleSubtitles,
+			$keybindStore.toggleFullscreen,
+			$keybindStore.speedDown,
+			$keybindStore.speedUp,
+			$keybindStore.frameBack,
+			$keybindStore.frameForward
+		]);
+
+		if (!isAndroidTv()) {
+			Mousetrap.unbind($keybindStore.skipSponsor);
+		}
+
+		if (watchProgressInterval) clearInterval(watchProgressInterval);
+		if (sabrAdapter) sabrAdapter.dispose();
+		if (showPlayerUiTimeout) clearTimeout(showPlayerUiTimeout);
+
+		if (player) {
+			player.unload();
+			player.destroy();
+		}
+	});
+</script>
+
+<div
+	id="player-container"
+	class:contain-video={!isAndroidTv()}
+	class:full-window={$playerIsInWindowFullscreen}
+	class:tv-contain-video={isAndroidTv()}
+	class:hide={showVideoRetry}
+	class:hide-cursor={!showControls}
+	role="presentation"
+	onmouseenter={showPlayerUI}
+	onmousemove={showPlayerUI}
+	onscroll={showPlayerUI}
+	onmouseleave={() => {
+		showControls = false;
+		playerInitalInteract = true;
+	}}
+	bind:this={playerContainer}
+>
+	<ClosedCaptions video={data.video} bind:currentTime bind:showControls />
+
+	<video
+		controls={false}
+		bind:this={playerElement}
+		poster={getBestThumbnail(data.video.videoThumbnails, 9999, 9999)}
+	></video>
+	{#if isEmbed && !isAndroidTv()}
+		<div
+			class="chip surface-container-highest"
+			style="position: absolute;top: 10px;left: 10px;font-size: 18px;"
+		>
+			{data.video.title}
+		</div>
+	{/if}
+
+	{#if showControls}
+		<div id="mobile-time" transition:fade>
+			<p class="chip surface-container-highest s">
+				{#if data.video.liveNow}
+					{$_('thumbnail.live')}
+				{:else}
+					{videoLength(currentTime)} / {videoLength(playerMaxKnownTime)}
+				{/if}
+			</p>
+			{#if playerVideoEndTimePretty && playerVideoEndTimePretty !== ''}
+				<p class="chip surface-container-highest">
+					{playerVideoEndTimePretty}
+				</p>
+			{/if}
+		</div>
+	{/if}
+	<TouchControls
+		{playerElement}
+		{showPlayerUI}
+		{toggleVideoPlaybackStatus}
+		{toggleFullscreen}
+		bind:playerInitalInteract
+		bind:playerMaxKnownTime
+		bind:playerIsBuffering
+	/>
+	<div id="player-controls" class="hide" class:show={showControls}>
+		<Timeline
+			{playerElement}
+			{currentTime}
+			{showPlayerUI}
+			{segments}
+			{playerIsPip}
+			video={data.video}
+			content={data.content}
+			bind:userManualSeeking
+			bind:playerMaxKnownTime
+		/>
+		<nav>
+			{#if !isAndroidTv()}
+				<nav class="no-wrap">
+					<button class="surface-container-highest" onclick={toggleVideoPlaybackStatus}>
+						<i>
+							{#if playerCurrentPlaybackState}
+								pause
+							{:else}
+								play_arrow
+							{/if}
+						</i>
+					</button>
+					{#if !isMobile() && !playerIsPip}
+						<div class="player-slider volume m l" {...playerVolumeSlider.root}>
+							<div class="track">
+								<div class="range"></div>
+								<div {...playerVolumeSlider.thumb}></div>
+							</div>
+						</div>
+					{/if}
+				</nav>
+			{/if}
+
+			<div class="max"></div>
+
+			<nav class="no-wrap">
+				<p class="chip m l" style="height: 100%;">
+					{#if data.video.liveNow}
+						{$_('thumbnail.live')}
+					{:else}
+						{videoLength(currentTime)} / {videoLength(data.video.lengthSeconds)}
+					{/if}
+				</p>
+				{#if !isAndroidTv() && !playerIsPip}
+					<CaptionSettings video={data.video} />
+					{#if playerElement}
+						<Settings {player} {playerElement} />
+						<Airplay {playerElement} />
+						<Pip {playerElement} />
+					{/if}
+					{#if Capacitor.getPlatform() !== 'android'}
+						<button
+							class="surface-container-highest"
+							class:primary={$playerIsInWindowFullscreen}
+							onclick={toggleInWindowFullscreen}
+						>
+							<i>fit_screen</i>
+						</button>
+					{/if}
+					<FullscreenToggle {toggleFullscreen} {playerIsFullscreen} />
+				{/if}
+			</nav>
+		</nav>
+	</div>
+</div>
+
+{#if data.video.premium}
+	<article class="video-placeholder">
+		<p>{$_('premium')}</p>
+	</article>
+	<div class="space"></div>
+{:else if showVideoRetry}
+	<article class="video-placeholder">
+		{#if $playerYouTubeJsFallback}
+			<p>{$_('player.youtubeJsLoading')}</p>
+			<progress class="circle large"></progress>
+		{:else}
+			<p>{$_('player.retryText')}</p>
+			<button onclick={reloadVideo}>{$_('player.enableYoutubejsTemp')}</button>
+			<div class="space"></div>
+			<button
+				class="border"
+				onclick={async () => {
+					playerYouTubeJsFallback.set(true);
+					await reloadVideo();
+				}}>{$_('player.enableYoutubejsPerm')}</button
+			>
+		{/if}
+	</article>
+	<div class="space"></div>
+{/if}
+
+<style>
+	#player-container {
+		position: relative;
+		width: 100%;
+	}
+
+	.full-window {
+		max-height: none !important;
+		max-width: none !important;
+		height: 100dvh;
+	}
+
+	#player-controls {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		padding: 10px;
+	}
+
+	#mobile-time {
+		position: absolute;
+		top: 0;
+		right: 0;
+		padding: 10px;
+	}
+
+	#mobile-time .chip {
+		border: none;
+		margin: 0;
+	}
+
+	.contain-video {
+		max-height: 80vh;
+		max-width: calc(80vh * 16 / 9);
+		overflow: hidden;
+		position: relative;
+		flex: 1;
+		background-color: black;
+		aspect-ratio: 16 / 9;
+	}
+
+	.tv-contain-video {
+		height: 100vh;
+		width: calc(100vh * 16 / 9);
+		max-width: 100vw;
+		max-height: 100vh;
+		overflow: hidden;
+		position: relative;
+		flex: 1;
+		background-color: black;
+		aspect-ratio: 16 / 9;
+	}
+
+	video[poster] {
+		height: 100%;
+		width: 100%;
+	}
+
+	video {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		max-height: 100%;
+		max-width: 100%;
+		object-fit: contain;
+		background-color: black;
+	}
+
+	.chip {
+		background-color: var(--surface-container-highest);
+		color: var(--on-surface);
+		border: none;
+	}
+
+	.hide-cursor {
+		cursor: none;
+	}
+</style>

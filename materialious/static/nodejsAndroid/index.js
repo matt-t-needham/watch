@@ -1,0 +1,215 @@
+const http = require('http');
+const https = require('https');
+
+const HOST = 'localhost';
+const PORT = 3000;
+const MAX_REDIRECTS = 10;
+
+// Can be changed via channels to disable ssl validation.
+let rejectUnauthorized = true;
+
+const CORS_HEADERS = [
+	'Origin',
+	'X-Requested-With',
+	'Content-Type',
+	'Accept',
+	'Authorization',
+	'x-goog-visitor-id',
+	'x-goog-api-key',
+	'x-origin',
+	'x-youtube-client-version',
+	'x-youtube-client-name',
+	'x-goog-api-format-version',
+	'x-goog-authuser',
+	'x-user-agent',
+	'Accept-Language',
+	'X-Goog-FieldMask',
+	'Range',
+	'Referer',
+	'Cookie',
+	'Content-Disposition',
+	'__redirect',
+	'__custom_return',
+	'__sid_auth'
+].join(', ');
+
+const CORS_ORIGIN = 'https://www.youtube.com';
+const USER_AGENT =
+	'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36(KHTML, like Gecko)';
+// bix: only YouTube/Google get the desktop disguise; everything else (our
+// Materialious server) is told what's really asking, so its logs can tell
+// this app from a desktop browser.
+const APP_USER_AGENT = 'Materialious-bix (Android)';
+const DISGUISED_HOSTS =
+	/(^|\.)(youtube\.com|youtu\.be|googlevideo\.com|google\.com|ytimg\.com|ggpht\.com|googleapis\.com|youtube-nocookie\.com)$/i;
+
+function userAgentFor(hostname) {
+	return DISGUISED_HOSTS.test(hostname) ? USER_AGENT : APP_USER_AGENT;
+}
+
+function setCorsHeaders(res) {
+	res.setHeader('Access-Control-Allow-Origin', CORS_ORIGIN);
+	res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+	res.setHeader('Access-Control-Allow-Headers', CORS_HEADERS);
+	res.setHeader('Access-Control-Max-Age', '86400');
+	res.setHeader('Access-Control-Allow-Credentials', 'true');
+}
+
+function proxyRequest(clientReq, clientRes, parsedUrl, bodyChunks = [], redirectCount = 0) {
+	if (redirectCount > MAX_REDIRECTS) {
+		clientRes.writeHead(508, { 'Content-Type': 'text/plain' });
+		return clientRes.end('Too many redirects');
+	}
+
+	const redirectAllowed = clientReq.headers.__redirect !== 'manual';
+	delete clientReq.headers.__redirect;
+	const returnHeadersAsJson = clientReq.headers.__custom_return === 'json-headers';
+	delete clientReq.headers.__custom_return;
+
+	const isHttps = parsedUrl.protocol === 'https:';
+	const httpClient = isHttps ? https : http;
+
+	const proxyOptions = {
+		method: clientReq.method,
+		headers: {
+			...clientReq.headers,
+			host: parsedUrl.host,
+			origin: parsedUrl.origin,
+			'user-agent': userAgentFor(parsedUrl.hostname),
+			connection: 'close'
+		},
+		rejectUnauthorized: rejectUnauthorized
+	};
+
+	if (clientReq.headers.__sid_auth) {
+		proxyOptions.headers.cookie = clientReq.headers.__sid_auth;
+		delete proxyOptions.headers.__sid_auth;
+	}
+
+	// Remove headers that may cause issues or be auto-managed
+	for (const key of [
+		'referer',
+		'x-forwarded-for',
+		'x-requested-with',
+		'sec-ch-ua-mobile',
+		'sec-ch-ua',
+		'sec-ch-ua-platform'
+	]) {
+		delete proxyOptions.headers[key];
+	}
+
+	const proxyReq = httpClient.request(parsedUrl, proxyOptions, (proxyRes) => {
+		// Handle redirects normally if redirectAllowed
+		if (
+			proxyRes.statusCode >= 300 &&
+			proxyRes.statusCode < 400 &&
+			proxyRes.headers.location &&
+			redirectAllowed
+		) {
+			proxyRes.resume(); // discard response data
+			const newUrl = new URL(proxyRes.headers.location, parsedUrl);
+			return proxyRequest(clientReq, clientRes, newUrl, bodyChunks, redirectCount + 1);
+		}
+
+		if (returnHeadersAsJson) {
+			const headersDict = {};
+			for (const [key, value] of Object.entries(proxyRes.headers)) {
+				headersDict[key] = value;
+			}
+
+			const body = JSON.stringify(headersDict);
+
+			clientRes.writeHead(200, {
+				'Content-Type': 'application/json',
+				'Access-Control-Allow-Origin': CORS_ORIGIN,
+				'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+				'Access-Control-Allow-Headers': CORS_HEADERS,
+				'Access-Control-Allow-Credentials': 'true',
+				'Content-Length': Buffer.byteLength(body)
+			});
+			return clientRes.end(body);
+		}
+
+		clientRes.writeHead(proxyRes.statusCode, {
+			...proxyRes.headers,
+			'Access-Control-Allow-Origin': CORS_ORIGIN,
+			'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+			'Access-Control-Allow-Headers': CORS_HEADERS,
+			'Access-Control-Allow-Credentials': 'true'
+		});
+
+		proxyRes.pipe(clientRes);
+	});
+
+	// Timeout handler
+	proxyReq.setTimeout(120000, () => {
+		proxyReq.destroy(new Error('Proxy request timed out'));
+	});
+
+	proxyReq.on('error', (err) => {
+		console.error('Proxy request error:', err.message);
+		if (!clientRes.headersSent) {
+			clientRes.writeHead(500, { 'Content-Type': 'text/plain' });
+		}
+		clientRes.end(`Proxy error: ${err.message}`);
+	});
+
+	clientReq.on('aborted', () => proxyReq.destroy());
+
+	// Write buffered body if present
+	if (bodyChunks.length > 0) {
+		proxyReq.write(Buffer.concat(bodyChunks));
+	}
+
+	proxyReq.end();
+}
+
+const server = http.createServer((req, res) => {
+	setCorsHeaders(res);
+
+	if (req.method === 'OPTIONS') {
+		res.writeHead(204);
+		return res.end();
+	}
+
+	if (!req.url || req.url === '/') {
+		res.writeHead(400, { 'Content-Type': 'text/plain' });
+		return res.end('No URL provided.');
+	}
+
+	let targetUrl = req.url.slice(1);
+
+	// Quick way to quickly send commands between app and nodejs backend.
+	if (targetUrl === 'allow-insecure-requests') {
+		rejectUnauthorized = false;
+		res.writeHead(200);
+		return res.end();
+	} else if (targetUrl === 'deny-insecure-requests') {
+		rejectUnauthorized = true;
+		res.writeHead(200);
+		return res.end();
+	} else if (targetUrl === 'check-nodejs') {
+		res.writeHead(200);
+		return res.end();
+	}
+
+	if (!targetUrl.startsWith('http')) {
+		targetUrl = 'http://' + targetUrl;
+	}
+
+	let parsedTarget;
+	try {
+		parsedTarget = new URL(targetUrl);
+	} catch (err) {
+		res.writeHead(400, { 'Content-Type': 'text/plain' });
+		return res.end(`Invalid URL: ${err.message}`);
+	}
+
+	const bodyChunks = [];
+	req.on('data', (chunk) => bodyChunks.push(chunk));
+	req.on('end', () => proxyRequest(req, res, parsedTarget, bodyChunks));
+});
+
+server.listen(PORT, () => {
+	console.log(`Proxy server running at http://${HOST}:${PORT}`);
+});

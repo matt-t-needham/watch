@@ -1,0 +1,79 @@
+import { get } from 'svelte/store';
+import { interfaceForceCase } from './store';
+
+export type TitleCase =
+	| 'uppercase'
+	| 'lowercase'
+	| 'sentence case'
+	| 'title case'
+	| 'original'
+	| null;
+export const titleCases: TitleCase[] = [
+	'original',
+	'lowercase',
+	'uppercase',
+	'title case',
+	'sentence case'
+];
+
+export function letterCase(text: string, caseTypeOverwrite?: TitleCase): string {
+	const casing = caseTypeOverwrite ? caseTypeOverwrite : get(interfaceForceCase);
+	if (!casing) return text;
+
+	switch (casing) {
+		case 'lowercase':
+			return text.toLowerCase();
+		case 'uppercase':
+			return text.toUpperCase();
+		case 'sentence case':
+			return sentenceCase(text);
+		case 'title case':
+			return titleCase(text);
+		case 'original':
+		default:
+			return text;
+	}
+}
+
+export function sentenceCase(text: string): string {
+	const sentences: string[] = text.match(/[^.!?]*[.!?]*/g) || [];
+
+	const casedSentences: string[] = sentences.map((sentence) => {
+		sentence = sentence.trim();
+		if (sentence.length === 0) return '';
+		return sentence.charAt(0).toUpperCase() + sentence.slice(1).toLowerCase();
+	});
+
+	return casedSentences.join(' ');
+}
+
+export function titleCase(text: string): string {
+	if (!text) return '';
+
+	const words: string[] = text.split(/(\s+)/).filter((word) => word.trim().length > 0);
+
+	const titleCasedWords: string[] = words.map((word) => {
+		if (word.length === 0) return '';
+
+		const firstChar = word.charAt(0);
+		const restOfWord = word.slice(1).toLowerCase();
+
+		// Capitalize if the first character is a letter
+		if (/[a-zA-Z]/.test(firstChar)) {
+			return firstChar.toUpperCase() + restOfWord;
+		}
+
+		return word;
+	});
+
+	return titleCasedWords.join(' ');
+}
+
+export function camelCaseToHuman(input: string): string {
+	return sentenceCase(
+		input
+			.replace(/([a-z])([A-Z])/g, '$1 $2')
+			.replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
+			.trim()
+	);
+}

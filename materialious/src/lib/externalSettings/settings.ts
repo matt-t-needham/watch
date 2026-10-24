@@ -1,0 +1,427 @@
+import { z } from 'zod';
+import { type Writable } from 'svelte/store';
+import { bixTvRoomStore } from '$lib/stores/backend';
+
+import {
+	darkModeStore,
+	deArrowEnabledStore,
+	deArrowInstanceStore,
+	deArrowThumbnailInstanceStore,
+	deArrowTitlesOnly,
+	interfaceAmoledTheme,
+	interfaceAutoExpandComments,
+	interfaceAutoExpandDesc,
+	interfaceDefaultPage,
+	interfaceDisplayThumbnailAvatars,
+	interfaceForceCase,
+	interfaceRegionStore,
+	interfaceSearchSuggestionsStore,
+	playerAlwaysLoopStore,
+	playerAutoPlayStore,
+	playerAutoplayNextByDefaultStore,
+	playerDefaultLanguage,
+	playerDefaultQualityStore,
+	playerProxyVideosStore,
+	playerSavePlaybackPositionStore,
+	playerTheatreModeByDefaultStore,
+	returnYTDislikesInstanceStore,
+	returnYtDislikesStore,
+	showWarningStore,
+	sponsorBlockDisplayToastStore,
+	sponsorBlockStore,
+	sponsorBlockUrlStore,
+	themeColorStore,
+	interfaceAutoExpandChapters,
+	playerDefaultPlaybackSpeed,
+	playerCCByDefault,
+	playerMiniplayerEnabled,
+	sponsorBlockCategoriesStore,
+	invidiousAuthStore,
+	backendInUseStore,
+	invidiousInstanceStore,
+	engineFallbacksStore,
+	engineMaxConcurrentChannelsStore,
+	engineCooldownYTStore,
+	engineCullYTStore,
+	interfaceAllowInsecureRequests,
+	interfaceDisableAutoUpdate,
+	interfaceAndroidUseNativeShare,
+	playerAndroidPauseOnNetworkChange,
+	playerAndroidLockOrientation,
+	playerYouTubeJsFallback,
+	playerYouTubeJsAlways,
+	interfaceSearchHistoryEnabled,
+	playerPreferredVolumeStore,
+	watchHistoryEnabledStore,
+	filterContentUrlStore,
+	filterContentUrlAutoUpdateStore,
+	interfaceAdvancedThemingStore,
+	interfaceBorderRadiusStore,
+	interfacePreserveTranslation,
+	interfaceMobileBackButtonStore,
+	subtitleSettings
+} from '$lib/store';
+import { isOwnBackend } from '$lib/shared';
+import { SUPPORTED_THEME_KEYS } from '$lib/shared/theme';
+
+export type PersistedStore<T> = {
+	name: string;
+	store: Writable<T>;
+	schema: z.ZodType<T>;
+	serialize?: (value: T) => string;
+	excludeFromBookmarklet?: boolean; // Won't be included in bookmarklet
+	excludeFromBackendSync?: boolean; // Won't be sync'd to account cloud
+};
+
+export const zBoolean = z.coerce.boolean();
+export const zNumber = z.coerce.number();
+export const zFloat = z.coerce.number().min(0).max(1);
+export const zString = z.string();
+export const zArray = z.array(z.string());
+export const zChapterMode = z.enum(['automatic', 'manual', 'timeline']);
+export const zChapterModeRecord = z.record(z.string(), zChapterMode.optional());
+export const zAuth = z.object({
+	username: z.string(),
+	token: z.string()
+});
+export const zThemeColors = z.record(
+	z.string().refine((val) => SUPPORTED_THEME_KEYS.includes(val), {
+		message: 'CSS property not allowed'
+	}),
+	z.string().regex(/^#?([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/)
+);
+export const zSubtitles = z.object({
+	fontSize: z.number(),
+	color: z.string().regex(/^#?([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/),
+	backgroundColor: z.string().regex(/^rgba?\([\d\s.,%]*\)|^#?([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/),
+	textShadow: z
+		.string()
+		.regex(/^(none|\d+px \d+px \d+px rgba\(\d{1,3},\s*\d{1,3},\s*\d{1,3},\s*[01]?(\.\d+)?\))$/),
+	offset: z.number().default(0),
+	fontFamily: z.string().optional().default('inherit'),
+	alignment: z.enum(['start', 'center', 'end']).optional().default('center'),
+	backgroundOpacity: z.number().min(0).max(1).optional().default(0.8)
+});
+
+export const persistedStores: PersistedStore<any>[] = [
+	{
+		name: 'returnYTDislikesInstance',
+		store: returnYTDislikesInstanceStore,
+		schema: zString
+	},
+	{
+		name: 'darkMode',
+		store: darkModeStore,
+		schema: zBoolean
+	},
+	{
+		name: 'themeColor',
+		store: themeColorStore,
+		schema: zString
+	},
+	{
+		name: 'autoPlay',
+		store: playerAutoPlayStore,
+		schema: zBoolean
+	},
+	{
+		name: 'alwaysLoop',
+		store: playerAlwaysLoopStore,
+		schema: zBoolean
+	},
+	{
+		name: 'proxyVideos',
+		store: playerProxyVideosStore,
+		schema: zBoolean
+	},
+	{
+		name: 'savePlaybackPosition',
+		store: playerSavePlaybackPositionStore,
+		schema: zBoolean
+	},
+	{
+		name: 'theatreModeByDefault',
+		store: playerTheatreModeByDefaultStore,
+		schema: zBoolean
+	},
+	{
+		name: 'autoplayNextByDefault',
+		store: playerAutoplayNextByDefaultStore,
+		schema: zBoolean
+	},
+	{
+		name: 'returnYtDislikes',
+		store: returnYtDislikesStore,
+		schema: zBoolean
+	},
+	{
+		name: 'searchSuggestions',
+		store: interfaceSearchSuggestionsStore,
+		schema: zBoolean
+	},
+	{
+		name: 'searchHistoryEnabled',
+		store: interfaceSearchHistoryEnabled,
+		schema: zBoolean
+	},
+	{
+		name: 'sponsorBlock',
+		store: sponsorBlockStore,
+		schema: zBoolean
+	},
+	{
+		name: 'sponsorBlockUrl',
+		store: sponsorBlockUrlStore,
+		schema: zString
+	},
+	{
+		name: 'deArrowInstance',
+		store: deArrowInstanceStore,
+		schema: zString
+	},
+	{
+		name: 'deArrowEnabled',
+		store: deArrowEnabledStore,
+		schema: zBoolean
+	},
+	{
+		name: 'deArrowThumbnailInstance',
+		store: deArrowThumbnailInstanceStore,
+		schema: zString
+	},
+	{
+		name: 'region',
+		store: interfaceRegionStore,
+		schema: zString
+	},
+	{
+		name: 'forceCase',
+		store: interfaceForceCase,
+		schema: zString
+	},
+	{
+		name: 'autoExpandComments',
+		store: interfaceAutoExpandComments,
+		schema: zBoolean
+	},
+	{
+		name: 'autoExpandDesc',
+		store: interfaceAutoExpandDesc,
+		schema: zBoolean
+	},
+	{
+		name: 'deArrowTitlesOnly',
+		store: deArrowTitlesOnly,
+		schema: zBoolean
+	},
+	{
+		name: 'sponsorBlockDisplayToast',
+		store: sponsorBlockDisplayToastStore,
+		schema: zBoolean
+	},
+	{
+		name: 'amoledTheme',
+		store: interfaceAmoledTheme,
+		schema: zBoolean
+	},
+	{
+		name: 'showWarning',
+		store: showWarningStore,
+		schema: zBoolean
+	},
+	{
+		name: 'displayThumbnailAvatars',
+		store: interfaceDisplayThumbnailAvatars,
+		schema: zBoolean
+	},
+	{
+		name: 'defaultLanguage',
+		store: playerDefaultLanguage,
+		schema: zString
+	},
+	{
+		name: 'defaultPage',
+		store: interfaceDefaultPage,
+		schema: zString
+	},
+	{
+		name: 'defaultQuality',
+		store: playerDefaultQualityStore,
+		schema: zString
+	},
+	{
+		name: 'autoExpandChapters',
+		store: interfaceAutoExpandChapters,
+		schema: zBoolean
+	},
+	{
+		name: 'defaultPlaybackSpeed',
+		store: playerDefaultPlaybackSpeed,
+		schema: zNumber
+	},
+	{
+		name: 'CCByDefault',
+		store: playerCCByDefault,
+		schema: zBoolean
+	},
+	{
+		name: 'miniplayerEnabled',
+		store: playerMiniplayerEnabled,
+		schema: zBoolean
+	},
+	{
+		name: 'preferredVolume',
+		store: playerPreferredVolumeStore,
+		schema: zFloat,
+		excludeFromBackendSync: true
+	},
+	{
+		name: 'bixTvRoom',
+		store: bixTvRoomStore,
+		schema: zString,
+		excludeFromBookmarklet: true
+	},
+	{
+		name: 'sponsorBlockCategoriesv2',
+		store: sponsorBlockCategoriesStore,
+		schema: zChapterModeRecord,
+		serialize: JSON.stringify
+	},
+	{
+		name: 'watchHistoryEnabled',
+		store: watchHistoryEnabledStore,
+		schema: zBoolean
+	},
+	{
+		name: 'filterContentUrl',
+		store: filterContentUrlStore,
+		schema: zString
+	},
+	{
+		name: 'filterContentUrlAutoUpdate',
+		store: filterContentUrlAutoUpdateStore,
+		schema: zBoolean
+	},
+	{
+		name: 'advancedTheming',
+		store: interfaceAdvancedThemingStore,
+		schema: zThemeColors,
+		serialize: JSON.stringify
+	},
+	{
+		name: 'borderRadius',
+		store: interfaceBorderRadiusStore,
+		schema: zNumber
+	},
+	{
+		name: 'preserveTranslation',
+		store: interfacePreserveTranslation,
+		schema: zBoolean
+	},
+	{
+		name: 'showMobileBackButton',
+		store: interfaceMobileBackButtonStore,
+		schema: zBoolean
+	},
+	{
+		name: 'subtitleSettings',
+		store: subtitleSettings,
+		schema: zSubtitles,
+		serialize: JSON.stringify
+	}
+];
+
+// If using own backend or a remote Materialious backend we can sync more externalSettings.
+let backendStoresRegistered = false;
+function registerBackendStores() {
+	if (backendStoresRegistered) return;
+	backendStoresRegistered = true;
+
+	persistedStores.push({
+		name: 'authToken',
+		store: invidiousAuthStore,
+		schema: zAuth,
+		serialize: JSON.stringify,
+		excludeFromBookmarklet: true
+	});
+	persistedStores.push({
+		name: 'backendInUse',
+		store: backendInUseStore,
+		schema: zString
+	});
+	persistedStores.push({
+		name: 'invidiousInstance',
+		store: invidiousInstanceStore,
+		schema: zString
+	});
+	persistedStores.push({
+		name: 'engineFallbacks',
+		store: engineFallbacksStore,
+		schema: zArray
+	});
+	persistedStores.push({
+		name: 'engineMaxConcurrentChannels',
+		store: engineMaxConcurrentChannelsStore,
+		schema: zNumber
+	});
+	persistedStores.push({
+		name: 'engineCooldownYT',
+		store: engineCooldownYTStore,
+		schema: zNumber
+	});
+	persistedStores.push({
+		name: 'engineCullYT',
+		store: engineCullYTStore,
+		schema: zNumber
+	});
+	persistedStores.push({
+		name: 'allowInsecureRequests',
+		store: interfaceAllowInsecureRequests,
+		schema: zString,
+		excludeFromBookmarklet: true
+	});
+	persistedStores.push({
+		name: 'disableAutoUpdate',
+		store: interfaceDisableAutoUpdate,
+		schema: zString,
+		excludeFromBookmarklet: true
+	});
+	persistedStores.push({
+		name: 'androidUseNativeShare',
+		store: interfaceAndroidUseNativeShare,
+		schema: zString,
+		excludeFromBookmarklet: true
+	});
+	persistedStores.push({
+		name: 'pauseOnNetworkChange',
+		store: playerAndroidPauseOnNetworkChange,
+		schema: zBoolean,
+		excludeFromBookmarklet: true
+	});
+	persistedStores.push({
+		name: 'androidLockOrientation',
+		store: playerAndroidLockOrientation,
+		schema: zBoolean,
+		excludeFromBookmarklet: true
+	});
+	persistedStores.push({
+		name: 'youTubeJsFallback',
+		store: playerYouTubeJsFallback,
+		schema: zBoolean
+	});
+	persistedStores.push({
+		name: 'youTubeJsAlways',
+		store: playerYouTubeJsAlways,
+		schema: zBoolean
+	});
+}
+
+export function ensureBackendPersistedStores() {
+	if (isOwnBackend()) {
+		registerBackendStores();
+	}
+}
+
+ensureBackendPersistedStores();
+
+export const persistedStoreKeys = persistedStores.map((store) => store.name);

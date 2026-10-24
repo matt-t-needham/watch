@@ -1,0 +1,241 @@
+<script lang="ts">
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
+	import { createUserBackend, loginUserBackend, type DerivePassword } from '$lib/api/backend';
+	import { backendFetch } from '$lib/api/backend/request';
+	import PageLoading from '$lib/components/PageLoading.svelte';
+	import { _ } from '$lib/i18n';
+	import { isOwnBackend } from '$lib/shared';
+	import * as comlink from 'comlink';
+	import { onMount } from 'svelte';
+	import PasswordStrength from '$lib/components/PasswordStrength.svelte';
+	import QuickConnectReceiver from '$lib/components/QuickConnectReceiver.svelte';
+	import { solveChallenge } from 'altcha-lib';
+	import type { Solution, Challenge } from 'altcha-lib/types';
+	import { deriveKey } from 'altcha-lib/algorithms/web/pbkdf2';
+
+	const registrationAllowed = $derived(!!isOwnBackend()?.registrationAllowed);
+	const captchaDisabled = $derived(!!isOwnBackend()?.captchaDisabled);
+
+	let needToRegister = $state(false);
+	let quickConnectMode = $state(false);
+
+	let username = $state('');
+	let rawPassword = $state('');
+
+	type CaptchaPayload = { solution: Solution; challenge: Challenge };
+	let captchaPayload = $state<CaptchaPayload | null>(null);
+	let captchaState = $state<'idle' | 'solving' | 'solved' | 'error'>('idle');
+
+	let worker: Worker | undefined;
+	let derivePassword: DerivePassword;
+
+	let isLoading = $state(false);
+
+	onMount(() => {
+		worker = new Worker(new URL('../../../../lib/workers/derivePassword.ts', import.meta.url), {
+			type: 'module'
+		});
+		const workerApi = comlink.wrap(worker);
+
+		derivePassword = (workerApi as any).derivePassword as DerivePassword;
+
+		solveCaptchaChallenge();
+	});
+
+	async function solveCaptchaChallenge() {
+		if (captchaDisabled) {
+			return;
+		}
+
+		captchaState = 'solving';
+
+		try {
+			const resp = await backendFetch('/api/captcha');
+			const challenge = await resp.json();
+
+			// If the remote backend has captcha disabled, it returns an empty body.
+			if (Object.keys(challenge).length === 0) {
+				captchaState = 'solved';
+				return;
+			}
+
+			const solution = await solveChallenge({ challenge, deriveKey });
+
+			if (!solution) {
+				captchaState = 'error';
+				return;
+			}
+
+			captchaPayload = {
+				solution,
+				challenge
+			};
+			captchaState = 'solved';
+		} catch {
+			captchaState = 'error';
+		}
+	}
+
+	let failed = $state(false);
+
+	async function onLogin(event: Event) {
+		event.preventDefault();
+
+		if (!captchaPayload && !captchaDisabled) {
+			return;
+		}
+
+		isLoading = true;
+
+		if (needToRegister) {
+			failed = !(await createUserBackend(username, rawPassword, captchaPayload!, derivePassword));
+		} else {
+			failed = !(await loginUserBackend(username, rawPassword, captchaPayload!, derivePassword));
+		}
+
+		isLoading = false;
+
+		if (!failed) {
+			goto(resolve('/', {}), { replaceState: true });
+		} else {
+			solveCaptchaChallenge();
+		}
+	}
+
+	function onQuickConnected() {
+		goto(resolve('/', {}), { replaceState: true });
+	}
+</script>
+
+{#if isLoading}
+	<PageLoading />
+{:else}
+	<nav class="center-align">
+		<article class="padding left-align">
+			{#if !quickConnectMode}
+				<h3>{$_(needToRegister ? 'createAccount' : 'login')}</h3>
+				<p class="no-margin">{$_(needToRegister ? 'materialiousCreate' : 'materialiousLogin')}</p>
+
+				<form onsubmit={onLogin}>
+					<div
+						class="field label prefix surface-container-highest"
+						class:invalid={failed && needToRegister}
+					>
+						<i>person</i>
+						<input bind:value={username} name="username" type="text" />
+						<label for="username">{$_('username')}</label>
+						{#if failed && needToRegister}
+							<output class="invalid">{$_('usernameTaken')}</output>
+						{/if}
+					</div>
+					<div
+						class="field label prefix surface-container-highest"
+						class:invalid={failed && !needToRegister}
+					>
+						<i>password</i>
+						<input bind:value={rawPassword} name="password" type="password" />
+						<label for="password">{$_('password')}</label>
+						{#if failed && !needToRegister}
+							<output class="invalid">{$_('invalidPassword')}</output>
+						{/if}
+					</div>
+
+					<PasswordStrength password={rawPassword} show={needToRegister} />
+
+					{#if !captchaDisabled}
+						<div class="space"></div>
+						<div class="surface-container-highest center-align small-padding max">
+							{#if captchaState === 'solving'}
+								<div class="center-align middle-align horizontal">
+									<progress class="circle indeterminate small" value="50" max="100"></progress>
+									<span class="small-text">{$_('verifyingCaptcha')}</span>
+								</div>
+							{:else if captchaState === 'solved'}
+								<div class="center-align horizontal">
+									<i class="primary-text">check_circle</i>
+									<span>{$_('captchaVerified')}</span>
+								</div>
+							{:else if captchaState === 'error'}
+								<div class="center-align horizontal">
+									<i class="red-text">error</i>
+									<span>{$_('captchaFailed')}</span>
+									<button
+										type="button"
+										class="chip circle small red-text"
+										onclick={solveCaptchaChallenge}
+									>
+										<i>refresh</i>
+									</button>
+								</div>
+							{/if}
+						</div>
+					{/if}
+
+					<nav class="right-align">
+						<button
+							type="button"
+							class="secondary"
+							disabled={!registrationAllowed}
+							onclick={() => {
+								needToRegister = !needToRegister;
+								failed = false;
+							}}
+						>
+							{#if !registrationAllowed}
+								<div class="tooltip bottom">{$_('registrationDisabled')}</div>
+							{/if}
+							<span>{$_(!needToRegister ? 'needRegister' : 'needLogin')}</span>
+						</button>
+						<button type="submit" disabled={captchaState !== 'solved' && !captchaDisabled}>
+							<i>done</i>
+							<span>{$_(needToRegister ? 'createAccount' : 'login')}</span>
+						</button>
+					</nav>
+				</form>
+			{:else}
+				<h3>{$_('quickConnect.title')}</h3>
+				<p class="no-margin">{$_('quickConnect.subtitle')}</p>
+				<QuickConnectReceiver onConnected={onQuickConnected} {captchaPayload} />
+				<nav class="right-align">
+					<button
+						type="button"
+						class="secondary link"
+						onclick={() => {
+							quickConnectMode = false;
+							void solveCaptchaChallenge();
+						}}
+					>
+						{$_('cancel')}
+					</button>
+				</nav>
+			{/if}
+			{#if !quickConnectMode && isOwnBackend()?.quickConnect}
+				<div class="space"></div>
+				<div class="divider"></div>
+				<div class="space"></div>
+				<button
+					class="outline flex"
+					type="button"
+					disabled={captchaState !== 'solved' && !captchaDisabled}
+					onclick={() => (quickConnectMode = true)}
+				>
+					<i>devices</i>
+					<span>{$_('quickConnect.useQuickConnect')}</span>
+				</button>
+			{/if}
+		</article>
+	</nav>
+{/if}
+
+<style>
+	article {
+		width: 400px;
+	}
+
+	@media screen and (max-width: 400px) {
+		article {
+			width: 100%;
+		}
+	}
+</style>

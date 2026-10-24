@@ -1,0 +1,654 @@
+<script lang="ts">
+	import { resolve } from '$app/paths';
+	import { goto } from '$app/navigation';
+
+	import { navigating, page } from '$app/state';
+	import { getFeed, notificationsMarkAsRead } from '$lib/api/index';
+	import type { Notification } from '$lib/api/model';
+	import Logo from '$lib/components/Logo.svelte';
+	import PageLoading from '$lib/components/PageLoading.svelte';
+	import Search from '$lib/components/Search.svelte';
+	import Settings from '$lib/components/settings/Settings.svelte';
+	import Thumbnail from '$lib/components/thumbnail/VideoThumbnail.svelte';
+	import Player from '$lib/components/player/Player.svelte';
+	import { getPages } from '$lib/navPages';
+	import {
+		invidiousAuthStore,
+		interfaceDefaultPage,
+		playerLoadingStore,
+		playerState,
+		playerTheatreModeIsActive,
+		playerIsInWindowFullscreen,
+		materialiousBackendStore,
+		rawMasterKeyStore,
+		backendInUseStore,
+		hideSearchStore,
+		keybindStore,
+		interfaceMobileBackButtonStore
+	} from '$lib/store';
+	import { Capacitor } from '@capacitor/core';
+	import ui from 'beercss';
+	import { onDestroy, onMount } from 'svelte';
+	import Mousetrap from 'mousetrap';
+	import { _ } from '$lib/i18n';
+	import { isMaterialiousAccountActive, isYTBackend } from '$lib/backend';
+	import { isAndroidTv, isMobile, truncate, keyCodeMap } from '$lib/utils';
+	import { getNextFocus } from '@bbc/tv-lrud-spatial';
+	import { goToInvidiousLogin, invidiousLogout, materialiousLogout } from '$lib/auth';
+	import { backendFetch } from '$lib/api/backend/request';
+	import Author from '$lib/components/Author.svelte';
+	import Toast from '$lib/components/Toast.svelte';
+	import { isOwnBackend } from '$lib/shared';
+	import { configBackendCache } from '$lib/stores/backend';
+	import WatchParty from '$lib/components/WatchParty.svelte';
+
+	let { children } = $props();
+
+	const showLogin = $derived(!isYTBackend() || !!isOwnBackend()?.internalAuth);
+
+	const accountLoggedIn = $derived(
+		(!!$rawMasterKeyStore && (!!isOwnBackend()?.internalAuth || !!$materialiousBackendStore)) ||
+			(!!$invidiousAuthStore && !isOwnBackend()?.internalAuth)
+	);
+
+	let mobileSearchShow = $state(false);
+	let notifications: Notification[] = $state([]);
+	let playerIsPip = $state(false);
+	let showWatchParty = $state(page.url.searchParams.get('room') !== null);
+	let watchPartySupported = $state(isOwnBackend() !== null);
+	materialiousBackendStore.subscribe(() => {
+		watchPartySupported = isOwnBackend() !== null;
+	});
+	configBackendCache.subscribe(() => {
+		watchPartySupported = isOwnBackend() !== null;
+	});
+	let leftNavElement: HTMLElement | undefined = $state();
+
+	let pages = $state(getPages());
+	invidiousAuthStore.subscribe(() => {
+		pages = getPages();
+	});
+	rawMasterKeyStore.subscribe(() => {
+		pages = getPages();
+	});
+	backendInUseStore.subscribe(() => {
+		pages = getPages();
+	});
+
+	$effect(() => {
+		playerIsPip = !page.url.pathname.includes('/watch');
+		if (playerIsPip) {
+			playerIsInWindowFullscreen.set(false);
+		}
+		requestAnimationFrame(() => resetScroll());
+	});
+
+	async function login() {
+		if (isOwnBackend()?.internalAuth) {
+			goto(resolve('/login/internal', {}));
+			return;
+		}
+
+		if (!isAndroidTv()) {
+			await goToInvidiousLogin();
+		} else {
+			goto(resolve('/login/tv', {}));
+		}
+	}
+
+	async function logout() {
+		await ($rawMasterKeyStore ? materialiousLogout : invidiousLogout)();
+	}
+
+	async function loadNotifications() {
+		const feed = await getFeed(100, 1);
+		notifications = feed.notifications;
+	}
+
+	function resetScroll() {
+		const main = document.querySelector('main.root');
+		if (main) main.scrollTop = 0;
+		document.documentElement.scrollTop = 0;
+		document.body.scrollTop = 0;
+	}
+
+	onMount(async () => {
+		if ($invidiousAuthStore && !isYTBackend()) {
+			loadNotifications().catch((error) => {
+				console.error('Failed to load invidious feed', error);
+				// A rejected token is only invalid on this device. Don't delete the
+				// synchronized cloud copy, which other (or future) sessions rely on.
+				invidiousAuthStore.set(null);
+			});
+		}
+
+		if (isMaterialiousAccountActive()) {
+			backendFetch('/api/user/isLoggedIn', { method: 'GET' })
+				.then((resp) => {
+					if (!resp.ok) materialiousLogout();
+				})
+				.catch(materialiousLogout);
+		}
+
+		resetScroll();
+	});
+
+	let playerPlaceholderArea: HTMLDivElement | undefined = $state();
+	let playerActiveArea: HTMLDivElement | undefined = $state();
+
+	$effect(() => {
+		const el = playerPlaceholderArea ?? playerActiveArea;
+		if (!el) return;
+
+		// In native fullscreen the player container leaves the normal flow,
+		// collapsing this wrapper. Use the fullscreen element's height instead
+		// so dependants like double-tap zones keep their correct sizing.
+		const updateHeight = () => {
+			const height = document.fullscreenElement
+				? document.fullscreenElement.getBoundingClientRect().height
+				: el.getBoundingClientRect().height;
+
+			document.documentElement.style.setProperty('--video-player-height', `${height + 10}px`);
+		};
+
+		const observer = new ResizeObserver(updateHeight);
+		observer.observe(el);
+		updateHeight();
+
+		document.addEventListener('fullscreenchange', updateHeight);
+
+		return () => {
+			observer.disconnect();
+			document.removeEventListener('fullscreenchange', updateHeight);
+		};
+	});
+
+	let fullscreenExited = false;
+
+	document.addEventListener('fullscreenchange', () => {
+		if (!document.fullscreenElement) {
+			fullscreenExited = true;
+			setTimeout(() => {
+				fullscreenExited = false;
+			}, 500);
+		}
+	});
+
+	Mousetrap.bind($keybindStore.closePlayer, () => {
+		if (fullscreenExited) return false;
+
+		if ($playerIsInWindowFullscreen) {
+			playerIsInWindowFullscreen.set(false);
+			return false;
+		}
+
+		if (document.fullscreenElement) {
+			document.exitFullscreen();
+			return false;
+		}
+
+		if (page.url.pathname.includes('/watch')) {
+			window.history.back();
+			return false;
+		}
+	});
+
+	Mousetrap.bind($keybindStore.pageBack, () => {
+		window.history.back();
+		return false;
+	});
+
+	Mousetrap.bind($keybindStore.pageForward, () => {
+		window.history.forward();
+		return false;
+	});
+
+	let tabBoundKeys: string[] = [];
+
+	$effect(() => {
+		const tabStoreKeys = [
+			$keybindStore.tab1,
+			$keybindStore.tab2,
+			$keybindStore.tab3,
+			$keybindStore.tab4
+		];
+
+		if (tabBoundKeys.length > 0) {
+			Mousetrap.unbind(tabBoundKeys);
+		}
+
+		tabBoundKeys = [];
+
+		tabStoreKeys.forEach((keyCombo, index) => {
+			if (!keyCombo) return;
+			if (index >= pages.length) return;
+
+			tabBoundKeys.push(keyCombo);
+			Mousetrap.bind(keyCombo, () => {
+				const p = getPages();
+				const tab = p[index];
+				if (tab) {
+					goto(resolve(tab.href, {}));
+				}
+				return false;
+			});
+		});
+	});
+
+	onDestroy(() => {
+		const unbindKeys = [
+			$keybindStore.closePlayer,
+			$keybindStore.pageBack,
+			$keybindStore.pageForward
+		];
+		if (tabBoundKeys.length > 0) unbindKeys.push(...tabBoundKeys);
+		Mousetrap.unbind(unbindKeys);
+	});
+
+	function handleLeftNavKeyDown(event: KeyboardEvent) {
+		if (!isAndroidTv()) return;
+		const keyCode = keyCodeMap[event.key];
+		if (!keyCode) return;
+		const target = event.target as HTMLElement;
+		if (!leftNavElement?.contains(target)) return;
+
+		if (keyCode === 38 || keyCode === 40) {
+			const next = getNextFocus(target, keyCode, leftNavElement);
+			if (next) {
+				event.preventDefault();
+				next.focus();
+			}
+			return;
+		}
+
+		if (keyCode === 39) {
+			event.preventDefault();
+			const settingsTab = document.querySelector('.tv-settings .categories [aria-selected="true"]');
+			if (settingsTab instanceof HTMLElement) {
+				settingsTab.focus();
+				return;
+			}
+			const main = document.getElementById('main-content');
+			main?.querySelector<HTMLElement>('[tabindex], a, input, button')?.focus();
+		}
+	}
+</script>
+
+<div>
+	<nav
+		id="left-nav"
+		class="left m l surface-container"
+		class:tv-nav={isAndroidTv()}
+		class:hide-element={$playerTheatreModeIsActive || $playerIsInWindowFullscreen}
+		bind:this={leftNavElement}
+		onkeydown={handleLeftNavKeyDown}
+	>
+		{#if !isAndroidTv()}
+			<header class="small-padding no-margin">
+				<a
+					href={resolve($interfaceDefaultPage, {})}
+					tabindex="-1"
+					data-sveltekit-preload-data="off"
+				>
+					<Logo />
+				</a>
+			</header>
+		{/if}
+		{#if isAndroidTv()}
+			<a href={resolve('/search', {})} class:active={page.url.href.endsWith('/search')}>
+				<i>search</i>
+				<div>{$_('searchPlaceholder')}</div>
+			</a>
+		{/if}
+		{#each pages as navPage (navPage)}
+			<a href={resolve(navPage.href, {})} class:active={page.url.href.endsWith(navPage.href)}
+				><i>{navPage.icon}</i>
+				<div>{navPage.name}</div>
+			</a>
+		{/each}
+		{#if isAndroidTv()}
+			<div class="divider"></div>
+			<a href={resolve('/settings', {})} class:active={page.url.href.endsWith('/settings')}>
+				<i>settings</i>
+				<div>{$_('layout.settings')}</div>
+			</a>
+			{#if showLogin}
+				{#if !accountLoggedIn}
+					<a onclick={login} href="#login">
+						<i>login</i>
+						<div>{$_('layout.login')}</div>
+					</a>
+				{:else}
+					<a onclick={logout} href="#logout">
+						<i>logout</i>
+						<div>{$_('layout.logout')}</div>
+					</a>
+				{/if}
+			{/if}
+		{/if}
+	</nav>
+	{#if !isAndroidTv()}
+		<nav
+			class="top"
+			id="top-content"
+			class:tv-nav={isAndroidTv()}
+			class:hide-element={$playerIsInWindowFullscreen}
+		>
+			{#if $playerTheatreModeIsActive}
+				<header role="presentation" style="cursor: pointer;" tabindex="-1" class="small-padding">
+					<a href={resolve($interfaceDefaultPage, {})}>
+						<Logo />
+					</a>
+				</header>
+			{/if}
+
+			{#if Capacitor.getPlatform() === 'electron' || ($interfaceMobileBackButtonStore && isMobile() && !mobileSearchShow)}
+				<nav class="no-space connected">
+					<button
+						onclick={() => window.history.back()}
+						class="surface-container-highest left-round"
+					>
+						<i>arrow_back</i>
+					</button>
+					<button
+						onclick={() => window.history.forward()}
+						class="surface-container-highest right-round"
+					>
+						<i>arrow_forward</i>
+					</button>
+				</nav>
+			{/if}
+
+			{#if !mobileSearchShow}
+				<button
+					onclick={() => (mobileSearchShow = !mobileSearchShow)}
+					class="transparent s circle large"
+				>
+					<i>search</i>
+				</button>
+			{/if}
+
+			<div class="max m l"></div>
+
+			{#if !$hideSearchStore}
+				<div class="m l">
+					<Search />
+				</div>
+			{/if}
+			{#if !mobileSearchShow}
+				<div class="max"></div>
+			{/if}
+
+			{#if mobileSearchShow}
+				<div class="mobile-search-container">
+					<div style="width: 100%;">
+						<Search on:searchCancelled={() => (mobileSearchShow = false)} />
+					</div>
+				</div>
+			{:else}
+				<!-- Watch parties run on the own backend -->
+				{#if watchPartySupported}
+					<button
+						onclick={() => {
+							showWatchParty = !showWatchParty;
+							if (showWatchParty) resetScroll();
+						}}
+						class="circle large transparent"
+						class:active={showWatchParty}
+					>
+						<i>groups</i>
+						<div class="tooltip bottom">{$_('watchParty.start')}</div>
+					</button>
+				{/if}
+				{#if $invidiousAuthStore && !isYTBackend()}
+					<button
+						class="circle large transparent"
+						onclick={() => {
+							ui('#dialog-notifications');
+							notificationsMarkAsRead();
+						}}
+						><i>notifications</i>
+						<div class="badge secondary">
+							{#if notifications.length > 99}
+								99+
+							{:else}
+								{notifications.length}
+							{/if}
+						</div>
+						<div class="tooltip bottom">{$_('layout.notifications')}</div>
+					</button>
+				{/if}
+				{#if !isOwnBackend()?.requireAuth || $rawMasterKeyStore}
+					<button class="circle large transparent" onclick={() => ui('#dialog-settings')}>
+						<i>settings</i>
+						<div class="tooltip bottom">{$_('layout.settings')}</div>
+					</button>
+				{/if}
+				{#if showLogin}
+					{#if !accountLoggedIn}
+						<button onclick={login} class="circle large transparent">
+							<i>login</i>
+							<div class="tooltip bottom">{$_('layout.login')}</div>
+						</button>
+					{:else}
+						<button onclick={logout} class="circle large transparent">
+							<i>logout</i>
+							<div class="tooltip bottom">{$_('layout.logout')}</div>
+						</button>
+					{/if}
+				{/if}
+			{/if}
+		</nav>
+	{/if}
+
+	<nav class="bottom s" class:hide-element={$playerIsInWindowFullscreen}>
+		{#each pages as navPage (navPage)}
+			<a
+				class="round"
+				href={resolve(navPage.href, {})}
+				class:active={page.url.href.endsWith(navPage.href)}
+				data-sveltekit-preload-data="off"
+				><i>{navPage.icon}</i>
+				<span style="font-size: .8em;">{navPage.name}</span>
+			</a>
+		{/each}
+	</nav>
+
+	{#if !isAndroidTv()}
+		<Settings />
+	{/if}
+
+	<dialog class="right" id="dialog-notifications">
+		<nav>
+			<h5 class="max">{$_('layout.notifications')}</h5>
+			<button class="circle transparent" data-ui="#dialog-notifications"><i>close</i></button>
+		</nav>
+		{#if notifications.length === 0}
+			<p>{$_('layout.noNewNotifications')}</p>
+		{:else}
+			{#each notifications as notification (notification)}
+				<article class="no-padding border">
+					<Thumbnail video={notification} sideways={true}></Thumbnail>
+				</article>
+			{/each}
+		{/if}
+	</dialog>
+
+	<main
+		id="main-content"
+		tabindex="0"
+		class="responsive max root"
+		class:full-window-main={$playerIsInWindowFullscreen}
+	>
+		{#if showWatchParty && watchPartySupported}
+			<WatchParty />
+		{/if}
+
+		{#if $playerLoadingStore && !$playerState}
+			<div class="grid">
+				<div
+					class:pip={playerIsPip}
+					class:s12={!playerIsPip}
+					class:m12={!playerIsPip}
+					class:l12={($playerTheatreModeIsActive || $playerIsInWindowFullscreen) && !playerIsPip}
+					class:l9={!$playerTheatreModeIsActive && !$playerIsInWindowFullscreen && !playerIsPip}
+				>
+					<div class="pip-info">
+						<div class="player" bind:this={playerPlaceholderArea}>
+							<div class="player-placeholder">
+								<progress class="circle large indeterminate"></progress>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		{/if}
+		{#if $playerState}
+			<div class="grid">
+				<div
+					class:pip={playerIsPip}
+					class:s12={!playerIsPip}
+					class:m12={!playerIsPip}
+					class:l12={($playerTheatreModeIsActive || $playerIsInWindowFullscreen) && !playerIsPip}
+					class:l9={!$playerTheatreModeIsActive && !$playerIsInWindowFullscreen && !playerIsPip}
+				>
+					<div class="pip-info">
+						{#if playerIsPip}
+							<div>
+								<nav>
+									<h6 class="max">{truncate($playerState.data.video.title, 25)}</h6>
+									<button
+										class="surface-container-highest m l"
+										onclick={() => playerState.set(undefined)}
+									>
+										<i>close</i>
+									</button>
+								</nav>
+								<div class="space"></div>
+								<nav class="s">
+									<a
+										class="button surface-container-highest"
+										href={resolve(`/watch/[videoId]`, { videoId: $playerState.data.video.videoId })}
+										><i>keyboard_arrow_right</i></a
+									>
+									<button
+										class="surface-container-highest"
+										onclick={() => playerState.set(undefined)}
+									>
+										<i>close</i>
+									</button>
+								</nav>
+							</div>
+						{/if}
+						<div class="player" bind:this={playerActiveArea}>
+							{#key $playerState.data.video.videoId}
+								<Player data={$playerState.data} {playerIsPip} />
+							{/key}
+						</div>
+					</div>
+					{#if playerIsPip}
+						<nav class="m l">
+							<Author channel={$playerState.data.video} hideSubscribe={true} />
+							<div class="max"></div>
+							<a
+								class="button surface-container-highest"
+								href={resolve(`/watch/[videoId]`, { videoId: $playerState.data.video.videoId })}
+								><i>keyboard_arrow_right</i></a
+							>
+						</nav>
+					{/if}
+				</div>
+			</div>
+		{/if}
+
+		{#await navigating.complete}
+			<PageLoading />
+			<!-- eslint-disable-next-line  @typescript-eslint/no-unused-vars -->
+		{:then _}
+			{@render children?.()}
+		{/await}
+
+		<Toast />
+	</main>
+</div>
+
+<style>
+	.hide-element {
+		display: none;
+	}
+
+	.tv-nav {
+		min-inline-size: 0.5rem;
+		padding: 0.5rem 1.5rem;
+	}
+
+	.pip {
+		position: fixed;
+		bottom: 10px;
+		right: 30px;
+		width: 400px;
+		z-index: 99999;
+		padding: 1em;
+		border: 0.0625rem solid var(--outline-variant);
+		background-color: var(--surface-container-low);
+		color: var(--on-surface);
+		border-radius: 0.75rem;
+	}
+
+	.player {
+		display: flex;
+		justify-content: center;
+	}
+
+	#dialog-notifications {
+		width: 500px;
+	}
+
+	@media only screen and (max-width: 993px) {
+		.full-window-main {
+			padding: 0;
+			max-width: 100%;
+		}
+
+		.pip {
+			width: 100%;
+			bottom: 100px;
+			right: 0px;
+		}
+
+		#dialog-notifications {
+			width: 100%;
+		}
+
+		.pip > .pip-info > .player {
+			height: 80px;
+			width: 150px;
+		}
+
+		.pip > .pip-info {
+			display: flex;
+			justify-content: space-between;
+		}
+
+		.pip h6 {
+			font-size: 1em;
+		}
+	}
+
+	.mobile-search-container {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.player-placeholder {
+		aspect-ratio: 16 / 9;
+		max-height: 80vh;
+		max-width: calc(80vh * 16 / 9);
+		width: 100%;
+		background-color: black;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: var(--border-radius);
+	}
+</style>

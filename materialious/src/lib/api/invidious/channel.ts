@@ -1,0 +1,53 @@
+import { associateAvatar } from '$lib/thumbnail';
+import type { ChannelContent, ChannelOptions, ChannelPage, Video } from '../model';
+import { buildPath, fetchErrorHandle } from './request';
+
+export async function getChannelInvidious(
+	channelId: string,
+	fetchOptions?: RequestInit
+): Promise<ChannelPage> {
+	const resp = await fetchErrorHandle(
+		await fetch(buildPath(`channels/${channelId}`), fetchOptions)
+	);
+	const respJson = await resp.json();
+
+	if (resp.ok) {
+		await associateAvatar(channelId, respJson.authorThumbnails);
+	}
+
+	return respJson;
+}
+
+export async function getChannelContentInvidious(
+	channelId: string,
+	options: ChannelOptions,
+	fetchOptions?: RequestInit
+): Promise<ChannelContent> {
+	const url = buildPath(`channels/${channelId}/${options.type}`);
+
+	if (typeof options.continuation !== 'undefined')
+		url.searchParams.set('continuation', options.continuation);
+
+	if (typeof options.sortBy !== 'undefined') url.searchParams.set('sort_by', options.sortBy);
+
+	const resp = await fetchErrorHandle(await fetch(url.toString(), fetchOptions));
+	const json = await resp.json();
+
+	if (json.videos && Array.isArray(json.videos)) {
+		json.videos = json.videos.filter((v: Record<string, unknown>) => v.type !== 'parse-error');
+	}
+
+	return json;
+}
+
+export async function searchChannelContentInvidious(
+	channelId: string,
+	search: string,
+	fetchOptions?: RequestInit
+): Promise<Video[]> {
+	const path = buildPath(`channels/${channelId}/search`);
+	path.searchParams.set('q', search);
+
+	const resp = await fetchErrorHandle(await fetch(path, fetchOptions));
+	return await resp.json();
+}

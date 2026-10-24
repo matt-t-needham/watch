@@ -1,0 +1,122 @@
+{
+	"appId": "us.materialio.app",
+	"artifactName": "${productName}-${platform}-${arch}.${ext}",
+	"directories": {
+		"buildResources": "resources"
+	},
+	"files": [
+    "assets/**/*",
+    "build/**/*",
+    "capacitor.config.*",
+    "app/**/*",
+    "!**/.electron-cache/**"
+	],
+	"publish": [
+		{
+			"provider": "github",
+			"vPrefixedTagName": false,
+			"releaseType": "release"
+		},
+		{
+			"provider": "snapStore",
+			"channels": ["stable"]
+		}
+	],
+	"icon": "appIcon.png",
+	"electronDownload": {
+		"cache": "./.electron-cache"
+	},
+	"afterPack": "scripts/afterPack.cjs",
+	"nsis": {
+		"allowElevation": true,
+		"oneClick": false,
+		"allowToChangeInstallationDirectory": true
+	},
+	"win": {
+		"publish": [
+			{
+				"provider": "github",
+				"vPrefixedTagName": false,
+				"releaseType": "release"
+			}
+		],
+		"target": [
+			{
+				"target": "nsis",
+				"arch": ["x64", "arm64"]
+			},
+			{
+				"target": "7z",
+				"arch": ["x64", "arm64"]
+			},
+			{
+				"target": "zip",
+				"arch": ["x64", "arm64"]
+			}
+		]
+	},
+	"mac": {
+		"publish": [
+			{
+				"provider": "github",
+				"vPrefixedTagName": false,
+				"releaseType": "release"
+			}
+		],
+		"category": "Entertainment",
+		"target": [
+			{
+				"target": "default",
+				"arch": "universal"
+			}
+		]
+	},
+	"linux": {
+		"publish": [
+			{
+				"provider": "github",
+				"vPrefixedTagName": false,
+				"releaseType": "release"
+			}
+		],
+		"target": [
+			{
+				"target": "deb",
+				"arch": ["x64", "arm64"]
+			},
+			{
+				"target": "zip",
+				"arch": ["x64", "arm64"]
+			},
+			{
+				"target": "rpm",
+				"arch": ["x64", "arm64"]
+			},
+			{
+				"target": "AppImage",
+				"arch": ["x64", "arm64"]
+			},
+			{
+				"target": "snap",
+				"arch": ["x64"]
+			}
+		],
+		"category": "GNOME;GTK;AudioVideo;Network;Utility;"
+	},
+	"rpm": {
+		"fpm": ["--rpm-rpmbuild-define=_build_id_links none"]
+	},
+	"deb": {
+		"depends": [
+			"libgtk-3-0",
+			"libnotify4",
+			"libnss3",
+			"libxss1",
+			"libxtst6",
+			"xdg-utils",
+			"libatspi2.0-0",
+			"libuuid1",
+			"libsecret-1-0"
+		]
+	}
+}

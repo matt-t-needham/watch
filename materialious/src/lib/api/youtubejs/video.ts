@@ -1,0 +1,339 @@
+import { androidPoTokenMinter } from '$lib/android/youtube/minter';
+import type {
+	AdaptiveFormats,
+	Captions,
+	Image,
+	StoryBoard,
+	Thumbnail,
+	VideoBase,
+	VideoPlay
+} from '$lib/api/model';
+import { poTokenCacheStore } from '$lib/store';
+import { convertToSeconds } from '$lib/time';
+import { Capacitor } from '@capacitor/core';
+import { get } from 'svelte/store';
+import type { Types } from 'youtubei.js';
+import { Innertube, Utils, YT, YTNodes, Platform } from 'youtubei.js';
+import { getInnertube } from '.';
+import { isUnrestrictedPlatform } from '$lib/backend';
+import { webPoTokenMinter } from '$lib/web/youtube/minter';
+import { associateAvatar } from '$lib/thumbnail';
+
+Platform.shim.eval = async (data: Types.BuildScriptResult) => new Function(data.output)();
+
+export interface VideoIntermediate {
+	innertube: Innertube;
+	video: YT.VideoInfo;
+	clientPlaybackNonce: string;
+	rawPlayerResponse: import('youtubei.js').ApiResponse;
+	authorThumbnails: Image[];
+	descString: string;
+	recommendedVideos: VideoBase[];
+	storyboard: StoryBoard[];
+}
+
+const videoIntermediateCache = new Map<string, VideoIntermediate>();
+
+export async function getVideoPageYTjs(videoId: string): Promise<VideoPlay> {
+	if (!isUnrestrictedPlatform()) {
+		throw new Error('Platform not supported');
+	}
+
+	const innertube = await getInnertube();
+
+	const clientPlaybackNonce = Utils.generateRandomString(16);
+
+	const watchEndpoint = new YTNodes.NavigationEndpoint({ watchEndpoint: { videoId } });
+	const rawPlayerResponse = await watchEndpoint.call(innertube.actions, {
+		contentCheckOk: true,
+		racyCheckOk: true,
+		playbackContext: {
+			contentPlaybackContext: {
+				signatureTimestamp: innertube.session.player?.signature_timestamp
+			}
+		}
+	});
+	const rawNextResponse = await watchEndpoint.call(innertube.actions, {
+		override_endpoint: '/next'
+	});
+	const video = new YT.VideoInfo(
+		[rawPlayerResponse, rawNextResponse],
+		innertube.actions,
+		clientPlaybackNonce
+	);
+
+	if (!video.primary_info || !video.secondary_info) {
+		throw new Error('Unable to pull video info from youtube.js');
+	}
+
+	const descString = video.secondary_info.description?.toString() || '';
+
+	let authorThumbnails: Image[];
+	if (video.basic_info.channel_id) {
+		const channel = await innertube.getChannel(video.basic_info.channel_id);
+		authorThumbnails = channel.metadata.avatar as Image[];
+		await associateAvatar(video.basic_info.channel_id, authorThumbnails);
+	} else {
+		authorThumbnails = [];
+	}
+
+	const recommendedVideos: VideoBase[] = [];
+	video.watch_next_feed?.forEach((recommended) => {
+		if (
+			!recommended.is(YTNodes.LockupView) ||
+			recommended.content_type !== 'VIDEO' ||
+			!recommended.metadata ||
+			!recommended.content_image?.is(YTNodes.ThumbnailView) ||
+			!recommended.metadata.metadata ||
+			recommended.metadata.metadata.metadata_rows.length < 2
+		)
+			return;
+
+		let lengthSeconds: number = 0;
+		recommended.content_image.overlays.forEach((overlay) => {
+			if (overlay.is(YTNodes.ThumbnailBottomOverlayView)) {
+				overlay.badges.forEach((badge) => {
+					if (
+						badge.is(YTNodes.ThumbnailBadgeView) &&
+						badge.badge_style === 'THUMBNAIL_OVERLAY_BADGE_STYLE_DEFAULT'
+					) {
+						lengthSeconds = convertToSeconds(badge.text);
+					}
+				});
+			}
+		});
+
+		const viewCountText = (
+			recommended.metadata.metadata.metadata_rows[1]?.metadata_parts?.[0]?.text?.text ?? ''
+		).split(' ')[0];
+
+		recommendedVideos.push({
+			videoThumbnails: (recommended?.content_image.image as Thumbnail[]) || [],
+			videoId: recommended.content_id,
+			title: recommended.metadata.title.toString(),
+			viewCountText,
+			author: recommended.metadata.metadata.metadata_rows[0]?.metadata_parts?.[0]?.text?.text ?? '',
+			lengthSeconds,
+			authorId:
+				recommended.metadata?.image?.renderer_context?.command_context?.on_tap?.payload?.browseId ||
+				'',
+			type: 'video'
+		});
+	});
+
+	const storyboard: StoryBoard[] = [];
+	if (video.storyboards && 'boards' in video.storyboards) {
+		video.storyboards.boards.forEach((board) => {
+			storyboard.push({
+				templateUrl: board.template_url,
+				url: board.template_url,
+				count: board.storyboard_count,
+				height: board.thumbnail_height,
+				width: board.thumbnail_width,
+				interval: board.interval,
+				storyboardCount: board.storyboard_count,
+				storyboardHeight: board.thumbnail_height,
+				storyboardWidth: board.thumbnail_width,
+				columns: board.columns,
+				rows: board.rows
+			});
+		});
+	}
+
+	const intermediate: VideoIntermediate = {
+		innertube,
+		video,
+		clientPlaybackNonce,
+		rawPlayerResponse,
+		authorThumbnails,
+		descString,
+		recommendedVideos,
+		storyboard
+	};
+
+	videoIntermediateCache.set(videoId, intermediate);
+
+	return {
+		type: 'video',
+		title: video.primary_info?.title?.toString() || '',
+		viewCount: Number(video.basic_info.view_count || 0),
+		viewCountText: video.basic_info.view_count?.toString() || '0',
+		likeCount: video.basic_info.like_count || 0,
+		dislikeCount: 0,
+		allowRatings: false,
+		rating: 0,
+		isListed: 0,
+		isFamilyFriendly: video.basic_info.is_family_safe || true,
+		genre: video.basic_info.category || '',
+		genreUrl: '',
+		dashUrl: undefined,
+		adaptiveFormats: [],
+		formatStreams: [],
+		recommendedVideos: recommendedVideos,
+		authorThumbnails: authorThumbnails,
+		captions: [],
+		authorId: video.basic_info.channel_id || '',
+		authorUrl: `/channel/${video.basic_info.channel_id}`,
+		authorVerified: false,
+		description: descString,
+		descriptionHtml: video.secondary_info.description?.toHTML() || descString,
+		published: 0,
+		publishedText: video.primary_info.published?.toString() || '',
+		premiereTimestamp: video.basic_info.is_upcoming
+			? Math.floor(video.basic_info.start_timestamp?.getTime() || 0 / 1000)
+			: undefined,
+		hlsUrl: video.streaming_data?.hls_manifest_url || undefined,
+		liveNow: video.basic_info.is_live || false,
+		premium: (video as any)?.playability_status?.error_screen?.offer_id === 'sponsors_only_video',
+		storyboards: storyboard,
+		isUpcoming: video?.playability_status?.status !== 'OK',
+		videoId: videoId,
+		videoThumbnails: video.basic_info.thumbnail as Thumbnail[],
+		author: video.basic_info.author || 'Unknown',
+		lengthSeconds: video.basic_info.duration || 0,
+		subCountText: video.secondary_info.owner?.subscriber_count.text || '',
+		keywords: video.basic_info.keywords || [],
+		allowedRegions: [],
+		ytjs: undefined,
+		fallbackPatch: 'youtubejs'
+	};
+}
+
+export async function continueVideoPlayerYTjs(videoId: string): Promise<{
+	dashUrl?: string;
+	adaptiveFormats: AdaptiveFormats[];
+	captions: Captions[];
+	hlsUrl?: string;
+	ytjs: import('$lib/api/model').Ytjs;
+}> {
+	const intermediate = videoIntermediateCache.get(videoId);
+	if (!intermediate) {
+		const full = await getVideoYTjs(videoId);
+		return {
+			dashUrl: full.dashUrl,
+			adaptiveFormats: full.adaptiveFormats,
+			captions: full.captions,
+			hlsUrl: full.hlsUrl,
+			ytjs: full.ytjs!
+		};
+	}
+
+	videoIntermediateCache.delete(videoId);
+
+	const { innertube, video, clientPlaybackNonce, rawPlayerResponse } = intermediate;
+
+	const requestKey = 'O43z0dpjhgX20SCx4KAo';
+
+	let platformMinter: (requestKey: string, visitorData: string) => Promise<string>;
+
+	switch (Capacitor.getPlatform()) {
+		case 'electron':
+			platformMinter = window.electronAPI.generatePoToken;
+			break;
+		case 'android':
+			platformMinter = androidPoTokenMinter;
+			break;
+		default:
+			platformMinter = webPoTokenMinter;
+			break;
+	}
+
+	poTokenCacheStore.set(await platformMinter(requestKey, videoId));
+
+	let dashUri: string | undefined;
+
+	// Unsupported format fix
+	// https://github.com/LuanRT/googlevideo/issues/42
+	if (video.streaming_data) {
+		video.streaming_data.adaptive_formats = video.streaming_data.adaptive_formats.filter(
+			(format) => format.xtags !== 'CgcKAnZiEgEx'
+		);
+	}
+
+	const adaptiveFormats: AdaptiveFormats[] = [];
+	video.streaming_data?.adaptive_formats.forEach((format) => {
+		adaptiveFormats.push({
+			index: format.index_range?.start?.toString() || '',
+			bitrate: format.bitrate?.toString() || '',
+			init: format.init_range?.start?.toString() || '',
+			url: format.url || '',
+			itag: format.itag?.toString() || '',
+			type: format.mime_type,
+			clen: '',
+			lmt: '',
+			projectionType: 0,
+			resolution: format.width && format.height ? `${format.height}p` : undefined,
+			size: format.width && format.height ? `${format.width}x${format.height}` : undefined
+		});
+	});
+
+	const isPostLiveDVR =
+		!!video.basic_info.is_post_live_dvr ||
+		(video.basic_info.is_live_content &&
+			!!(video.streaming_data?.dash_manifest_url || video.streaming_data?.hls_manifest_url));
+
+	if (video.streaming_data) {
+		if (video.basic_info.is_live) {
+			dashUri = video.streaming_data.dash_manifest_url
+				? `${video.streaming_data.dash_manifest_url}/mpd_version/7`
+				: video.streaming_data.hls_manifest_url;
+		} else if (isPostLiveDVR) {
+			dashUri = video.streaming_data.hls_manifest_url
+				? video.streaming_data.hls_manifest_url
+				: `${video.streaming_data.dash_manifest_url}/mpd_version/7`;
+		} else {
+			const manifest = await video.toDash({
+				manifest_options: {
+					is_sabr: true,
+					include_thumbnails: false
+				}
+			});
+			dashUri = `data:application/dash+xml;base64,${btoa(manifest)}`;
+		}
+	}
+
+	const captions: Captions[] = [];
+	video.captions?.caption_tracks?.forEach((caption) => {
+		const url = new URL(caption.base_url);
+
+		url.searchParams.set('potc', '1');
+		url.searchParams.set('pot', get(poTokenCacheStore) ?? '');
+		url.searchParams.set('c', innertube.session.context.client.clientName);
+		url.searchParams.set('fmt', 'vtt');
+
+		url.searchParams.delete('xosf');
+
+		captions.push({
+			label: caption.name?.toString() || '',
+			language_code: caption.language_code,
+			url: url.toString()
+		});
+	});
+
+	return {
+		dashUrl: dashUri,
+		adaptiveFormats,
+		captions,
+		hlsUrl: video.streaming_data?.hls_manifest_url || undefined,
+		ytjs: {
+			innertube: innertube,
+			video: video,
+			clientPlaybackNonce: clientPlaybackNonce,
+			rawApiResponse: rawPlayerResponse
+		}
+	};
+}
+
+export async function getVideoYTjs(videoId: string): Promise<VideoPlay> {
+	const pageVideo = await getVideoPageYTjs(videoId);
+	const playerData = await continueVideoPlayerYTjs(videoId);
+
+	return {
+		...pageVideo,
+		dashUrl: playerData.dashUrl,
+		adaptiveFormats: playerData.adaptiveFormats,
+		captions: playerData.captions,
+		hlsUrl: playerData.hlsUrl,
+		ytjs: playerData.ytjs
+	};
+}

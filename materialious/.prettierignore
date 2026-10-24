@@ -1,0 +1,10 @@
+# Ignore files for PNPM, NPM and YARN
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+android/
+electron/
+node_modules/
+.svelte-kit/
+shared/dist/
+static/localApi/ghContributors.json

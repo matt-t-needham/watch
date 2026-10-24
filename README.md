@@ -1,0 +1,264 @@
+<div align="center">  <img src="./branding/MaterialiousAppIcon.svg" width="200px" />
+  <h1>Materialious</h1>
+  <quote>
+    Modern Material design for YouTube and Invidious.
+  </quote>
+</div>
+
+&nbsp;
+
+<p align="center">
+  <a href="./LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/github/license/Materialious/Materialious?color=33a34e" /></a>
+  <a href="https://github.com/Materialious/Materialious/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Materialious/Materialious" /></a>
+  <a href="https://github.com/Materialious/Materialious/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/Materialious/Materialious/total" /></a>
+  <a href="https://github.com/Materialious/Materialious/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Materialious/Materialious?logo=github" /></a>
+  <a href="https://f-droid.org/packages/us.materialio.app/"><img alt="F-Droid" src="https://img.shields.io/f-droid/v/us.materialio.app?logo=f-droid" /></a>
+  <a href="https://matrix.to/#/#ward:matrix.org"><img alt="Matrix" src="https://img.shields.io/badge/matrix-%23ward%3Amatrix.org-0dbd8b?logo=matrix" /></a>
+</p>
+
+&nbsp;
+
+---
+
+![Preview of homepage](./previews/home-preview.png)
+
+## Table of Contents
+
+- [Features](#features)
+- [Docker deployment](#docker-deployment)
+- [Legacy Docker deployment, Invidious only](#legacy-docker-deployment-invidious-only)
+- [Installing as a app](#installing-as-a-app)
+- [Translations](#translations)
+- [Previews](#previews)
+- [Have any questions?](#have-any-questions)
+- [Special thanks to](#special-thanks-to)
+- [Contributing](#contributing)
+- [License](#license)
+
+# Features
+
+- **Accounts & Syncing**
+  - Internal account system (optional).
+    - Subscriptions are end-to-end encrypted.
+    - History & watch progress syncing.
+    - [Proof-of-work Captcha](https://github.com/altcha-org/altcha).
+  - Subscription importing/exporting, with automatic Invidious/Materialious import & export.
+  - Sync your watch progress between Invidious sessions.
+- **Invidious & Subscriptions**
+  - Invidious is optional.
+    - Enjoy Materialious without an Invidious instance via our YouTube backend.
+    - Local video fallback if Invidious fails loading videos.
+  - Invidious companion support.
+  - Integrates with Invidious subscriptions.
+- **Integrations**
+  - SponsorBlock built-in.
+  - [Return YouTube Dislike](https://github.com/Anarios/return-youtube-dislike) (RYD) built-in.
+  - [DeArrow](https://github.com/ajayyy/DeArrow) built-in.
+- **Player**
+  - Chapters.
+  - Mini player (PIP).
+  - Playlists.
+- **Platform & Privacy**
+  - Android TV support.
+  - Support for disabling certificate validation for homelab users.
+  - No ads.
+  - No tracking.
+  - Light/Dark themes.
+  - Custom colour themes.
+  - PWA support.
+  - YT path redirects.
+
+# Docker deployment
+
+This version of Materialious is feature rich, has its own account system (optional) & is easier to setup.
+
+[Please read the guide here](./docs/DOCKER-FULL.md)
+
+# Legacy Docker deployment, Invidious only.
+
+This version of Materialious is still **fully** supported, but is purely just a Invidious frontend without any fancy bells and whistles, this version is harder to deploy...
+
+[Please read the guide here](./docs/DOCKER.md)
+
+# Installing as a app
+
+<!--This layout is taken from spotube's README as I really liked its layout.
+I've commented out places what aren't relevant but might be in the future.-->
+<table>
+  <tr>
+    <th>Platform</th>
+    <th>Package/Installation Method</th>
+  </tr>
+  <tr>
+    <td>Windows</td>
+    <td>
+      <a href="https://github.com/Materialious/Materialious/releases/latest/download/Materialious-win32-x64.exe">
+        <img width="220" alt="Windows Download" src="https://get.todoist.help/hc/article_attachments/4403191721234/WindowsButton.svg">
+      </a>
+  </tr>
+  <tr>
+    <td>MacOS (x64 & arm64)</td>
+    <td>
+      <a href="https://github.com/Materialious/Materialious/releases/latest/download/Materialious-darwin-universal.dmg">
+        <img width="220" alt="MacOS Download" src="https://www.filesdna.com/wp-content/uploads/2021/03/mac-download-button-1.png">
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td>Android</td>
+    <td>
+      <br>
+      <a href="https://github.com/Materialious/Materialious/releases/latest/download/app-universal-release-signed.apk">
+        <img src="https://raw.githubusercontent.com/NeoApplications/Neo-Backup/034b226cea5c1b30eb4f6a6f313e4dadcbb0ece4/badge_github.png" alt="Get it on GitHub" height="80"/>
+      </a>
+      </br>
+      <br>
+        <a href="http://apps.obtainium.imranr.dev/redirect.html?r=obtainium://add/https://github.com/Materialious/Materialious">
+          <img height="60" alt="Get it on Obtainium" src="https://raw.githubusercontent.com/ImranR98/Obtainium/e3fcf6e0b5187445a76462b4042aba6b2fc15047/assets/graphics/badge_obtainium.png" />
+        </a>
+      </br>
+      <br>
+        <a href="https://f-droid.org/packages/us.materialio.app/">
+          <img height="80" alt="Get it on F-Droid" src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" />
+        </a>
+      </br>
+      <br>
+      <a href="https://apt.izzysoft.de/fdroid/index/apk/us.materialio.app">
+        <img height="80" alt="Get it on Izzysoft" src="https://codeberg.org/IzzyOnDroid/repo/raw/commit/9873f08e282332a231e64d9729f810f427a521e4/assets/IzzyOnDroid.png" />
+      </a>
+      </br>
+    </td>
+  </tr>
+  <tr>
+    <td>Android TV</td>
+    <td>
+      <a href="https://github.com/rumboalla/apkupdater">
+          For Android TV use APKUpdater.
+      </a>
+    </td>
+  </tr>
+  <tr>
+  <tr>
+    <td>Flatpak</td>
+    <td>
+      <p><code>flatpak install flathub us.materialio.Materialious</code></p>
+      <a href="https://flathub.org/apps/us.materialio.Materialious">
+        <img width="220" alt="Download on Flathub" src="https://flathub.org/assets/badges/flathub-badge-en.png">
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td>AppImage</td>
+    <td>
+      <a href="https://github.com/Materialious/Materialious/releases/latest/download/Materialious-linux-x86_64.AppImage">
+        <img width="220" alt="Download on Flathub" src="https://user-images.githubusercontent.com/61944859/169455015-13385466-8901-48fe-ba90-b62d58b0be64.png">
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td>Debian/Ubuntu</td>
+    <td>
+      <a href="https://github.com/Materialious/Materialious/releases/latest/download/Materialious-linux-amd64.deb">
+        <img width="220" alt="Debian/Ubuntu Download" src="https://user-images.githubusercontent.com/61944859/169097994-e92aff78-fd75-4c93-b6e4-f072a4b5a7ed.png">
+      </a>
+      <p>Then run: <code>sudo apt install ./Materialious-linux-amd64.deb</code></p>
+    </td>
+  </tr>
+  <tr>
+    <td>Fedora/OpenSuse</td>
+    <td>
+      <a href="https://github.com/Materialious/Materialious/releases/latest/download/Materialious-linux-x86_64.rpm">
+        <img width="220" alt="Fedora/OpenSuse Download" src="https://user-images.githubusercontent.com/61944859/223638350-5926b9da-04d6-4edd-931d-ad533e4ff058.png">
+      </a>
+      <p>For Fedora: <code>sudo dnf install ./Materialious-linux-x86_64.rpm</code></p>
+      <p>For OpenSuse: <code>sudo zypper in ./Materialious-linux-x86_64.rpm</code></p>
+    </td>
+  </tr>
+  <tr>
+    <td>Linux (tarball)</td>
+    <td>
+      <a href="https://github.com/Materialious/Materialious/releases/latest/download/Materialious-linux-x64.7z">
+        <img width="220" alt="Tarball Download" src="https://user-images.githubusercontent.com/61944859/169456985-e0ba1fd4-10e8-4cc0-ab94-337acc6e0295.png">
+      </a>
+    </td>
+  </tr>
+</table>
+
+# Translations
+
+Help [translate Materialious via Weblate](https://toolate.othing.xyz/projects/materialious/)!
+
+<a href="https://toolate.othing.xyz/projects/materialious/">
+<img src="https://toolate.othing.xyz/widget/materialious/materialious/multi-auto.svg" alt="Translation status" />
+</a>
+
+# Previews
+
+<details>
+<summary><b>More screenshots</b></summary>
+
+## Mobile
+
+<p align="center"><img src="./previews/mobile-preview.png" width="260" alt="Preview of the mobile app" /></p>
+
+## Android TV Home
+
+<p align="center"><img src="./previews/android-tv-home.png" width="640" alt="Preview of subscriptions page on Android TV" /></p>
+
+## Android TV Player
+
+<p align="center"><img src="./previews/android-tv-player.png" width="640" alt="Preview of player on Android TV" /></p>
+
+## Login
+
+<p align="center"><img src="./previews/login-previews.png" width="640" alt="Preview of Login page" /></p>
+
+## Player
+
+<p align="center"><img src="./previews/player-preview.png" width="640" alt="Preview of player" /></p>
+
+## Settings
+
+<p align="center"><img src="./previews/setting-preview.png" width="640" alt="Preview of settings" /></p>
+
+## Channel
+
+<p align="center"><img src="./previews/channel-preview.png" width="640" alt="Preview of channel" /></p>
+
+## Chapters
+
+<p align="center"><img src="./previews/chapter-previews.png" width="640" alt="Preview of chapters" /></p>
+
+## Playlists
+
+<p align="center"><img src="./previews/playlist-preview.png" width="640" alt="Preview of playlist page" /></p>
+<p align="center"><img src="./previews/playlist-preview-2.png" width="640" alt="Preview of playlist on video page" /></p>
+
+</details>
+
+# Have any questions?
+
+[Join our Matrix space](https://matrix.to/#/#ward:matrix.org)
+
+# Special thanks to
+
+- [SecularSteve](https://github.com/SecularSteve) for creating Materialious' logo.
+- [Invidious](https://github.com/iv-org).
+- [Clipious](https://github.com/lamarios/clipious) for inspiration & references to undocumented Invidious routes.
+- [Beer CSS](https://github.com/beercss/beercss) (Especially the [YouTube template](https://github.com/beercss/beercss/tree/main/src/youtube) what was used as the base for Materialious.)
+- [LuanRT](https://github.com/LuanRT) for YouTube.js & SABR implementation.
+- [FreeTube](https://github.com/FreeTubeApp/FreeTube) for their subtitle fix.
+- [spotube](https://github.com/KRTirtho/spotube) for using their README layout for local installation.
+- Every dependency in [package.json](/materialious/package.json).
+
+# Contributing
+
+Contributions are welcome! Please read the guidelines below before getting started.
+
+- [How Materialious is built](./docs/BUILDING.md)
+- [How to contribute to Materialious](./docs/DEV.md)
+- [Code of Conduct](./CODE_OF_CONDUCT.md)
+
+# License
+
+[Materialious](LICENSE) is licensed under the [GNU Affero General Public License v3.0](https://www.gnu.org/licenses/agpl-3.0.en.html) (AGPL-3.0).

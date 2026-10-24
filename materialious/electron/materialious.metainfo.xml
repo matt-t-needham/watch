@@ -1,0 +1,629 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id type="desktop-application">us.materialio.Materialious</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <name>Materialious</name>
+  <summary>Watch and browse YouTube privately</summary>
+  <description>
+    <p>Materialious is a modern material design frontend for YouTube and Invidious that focuses on a clean, privacy-friendly experience. It keeps videos playing with local fallback when Invidious fails.</p>
+    <p>Features:</p>
+<ul>
+      <li>Optional account system with end-to-end encrypted subscriptions, synced history and watch progress, plus proof-of-work captcha</li>
+      <li>Invidious is optional - enjoy Materialious without an instance via the YouTube backend, with local video fallback if Invidious fails to load videos</li>
+      <li>Invidious companion support and subscription import/export</li>
+      <li>Sync watch progress between Invidious sessions</li>
+      <li>SponsorBlock, Return YouTube Dislikes and DeArrow built-in</li>
+      <li>Live streams, DASH, chapters, mini player and playlists</li>
+      <li>No ads and no tracking</li>
+      <li>Light, dark and custom colour themes</li>
+      <li>Android TV and PWA support with YouTube path redirects</li>
+      <li>Support for disabling certificate validation for homelab users</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">us.materialio.Materialious.desktop</launchable>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Video</category>
+  </categories>
+  <url type="homepage">https://materialio.us</url>
+  <url type="bugtracker">https://github.com/Materialious/Materialious/issues</url>
+  <url type="donation">https://github.com/sponsors/WardPearce</url>
+  <url type="contribute">https://github.com/Materialious/Materialious</url>
+  <url type="vcs-browser">https://github.com/Materialious/Materialious</url>
+  <project_license>AGPL-3.0</project_license>
+  <developer_name>WardPearce</developer_name>
+  <branding>
+    <color type="primary" scheme_preference="light">#B26AC4</color>
+    <color type="primary" scheme_preference="dark">#57236B</color>
+  </branding>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Popular videos</caption>
+      <image>https://raw.githubusercontent.com/Materialious/Materialious/4baa7b897a46d4e71aaca7d322e4f7dafc870a33/previews/home-preview.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Watching a video</caption>
+      <image>https://raw.githubusercontent.com/Materialious/Materialious/43e6eb78edae030ffd372af5b9a8dcf92564be46/previews/player-preview.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Modifying settings</caption>
+      <image>https://raw.githubusercontent.com/Materialious/Materialious/43e6eb78edae030ffd372af5b9a8dcf92564be46/previews/setting-preview.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Browsing a channel</caption>
+      <image>https://raw.githubusercontent.com/Materialious/Materialious/4baa7b897a46d4e71aaca7d322e4f7dafc870a33/previews/channel-preview.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Browsing a playlist</caption>
+      <image>https://raw.githubusercontent.com/Materialious/Materialious/4baa7b897a46d4e71aaca7d322e4f7dafc870a33/previews/playlist-preview.png</image>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1">
+    <content_attribute id="social-chat">moderate</content_attribute>
+    <content_attribute id="social-audio">moderate</content_attribute>
+    <content_attribute id="social-contacts">intense</content_attribute>
+  </content_rating>
+  <releases>
+    <release version="1.18.10" date="2026-10-22">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.18.10</url>
+    </release>
+<release version="1.18.9" date="2026-10-06">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.18.9</url>
+    </release>
+<release version="1.18.8" date="2026-9-24">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.18.8</url>
+    </release>
+<release version="1.18.7" date="2026-9-17">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.18.7</url>
+    </release>
+<release version="1.18.6" date="2026-9-16">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.18.6</url>
+    </release>
+<release version="1.18.5" date="2026-9-15">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.18.5</url>
+    </release>
+<release version="1.18.4" date="2026-9-12">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.18.4</url>
+    </release>
+<release version="1.18.3" date="2026-9-12">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.18.3</url>
+    </release>
+<release version="1.18.2" date="2026-9-12">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.18.2</url>
+    </release>
+<release version="1.18.1" date="2026-9-11">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.18.1</url>
+    </release>
+<release version="1.18.0" date="2026-9-11">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.18.0</url>
+    </release>
+<release version="1.17.16" date="2026-9-11">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.17.16</url>
+    </release>
+<release version="1.17.15" date="2026-9-10">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.17.15</url>
+    </release>
+<release version="1.17.14" date="2026-9-10">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.17.14</url>
+    </release>
+<release version="1.17.13" date="2026-9-10">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.17.13</url>
+    </release>
+<release version="1.17.12" date="2026-9-02">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.17.12</url>
+    </release>
+<release version="1.17.11" date="2026-8-23">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.17.11</url>
+    </release>
+<release version="1.17.10" date="2026-8-09">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.17.10</url>
+    </release>
+<release version="1.17.9" date="2026-8-08">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.17.9</url>
+    </release>
+<release version="1.17.8" date="2026-8-08">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.17.8</url>
+    </release>
+<release version="1.17.7" date="2026-8-03">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.17.7</url>
+    </release>
+<release version="1.17.6" date="2026-7-29">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.17.6</url>
+    </release>
+<release version="1.17.5" date="2026-7-29">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.17.5</url>
+    </release>
+<release version="1.17.4" date="2026-7-20">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.17.4</url>
+    </release>
+<release version="1.17.3" date="2026-7-12">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.17.3</url>
+    </release>
+<release version="1.17.2" date="2026-7-05">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.17.2</url>
+    </release>
+<release version="1.17.1" date="2026-7-02">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.17.1</url>
+    </release>
+<release version="1.17.0" date="2026-7-02">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.17.0</url>
+    </release>
+<release version="1.16.32" date="2026-6-23">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.32</url>
+    </release>
+<release version="1.16.31" date="2026-6-13">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.31</url>
+    </release>
+<release version="1.16.30" date="2026-5-29">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.30</url>
+    </release>
+<release version="1.16.29" date="2026-5-26">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.29</url>
+    </release>
+<release version="1.16.28" date="2026-5-25">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.28</url>
+    </release>
+<release version="1.16.27" date="2026-5-18">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.27</url>
+    </release>
+<release version="1.16.26" date="2026-4-30">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.26</url>
+    </release>
+<release version="1.16.25" date="2026-4-23">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.25</url>
+    </release>
+<release version="1.16.24" date="2026-4-07">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.24</url>
+    </release>
+<release version="1.16.23" date="2026-3-25">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.23</url>
+    </release>
+<release version="1.16.22" date="2026-3-17">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.22</url>
+    </release>
+<release version="1.16.21" date="2026-3-17">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.21</url>
+    </release>
+<release version="1.16.20" date="2026-3-14">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.20</url>
+    </release>
+<release version="1.16.19" date="2026-3-13">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.19</url>
+    </release>
+<release version="1.16.18" date="2026-3-11">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.18</url>
+    </release>
+<release version="1.16.17" date="2026-3-09">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.17</url>
+    </release>
+<release version="1.16.16" date="2026-3-08">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.16</url>
+    </release>
+<release version="1.16.15" date="2026-3-08">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.15</url>
+    </release>
+<release version="1.16.14" date="2026-3-08">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.14</url>
+    </release>
+<release version="1.16.13" date="2026-3-07">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.13</url>
+    </release>
+<release version="1.16.12" date="2026-3-06">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.12</url>
+    </release>
+<release version="1.16.11" date="2026-3-06">
+    <url>https://github.com/Materialious/Materialious/releases/tag/1.16.11</url>
+</release>
+<release version="1.16.9" date="2026-3-05">
+    <url>https://github.com/Materialious/Materialious/releases/tag/1.16.9</url>
+</release>
+<release version="1.16.8" date="2026-3-03">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.8</url>
+    </release>
+<release version="1.16.7" date="2026-3-02">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.7</url>
+    </release>
+<release version="1.16.6" date="2026-2-23">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.6</url>
+    </release>
+<release version="1.16.5" date="2026-2-23">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.5</url>
+    </release>
+<release version="1.16.4" date="2026-2-22">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.4</url>
+    </release>
+<release version="1.16.3" date="2026-2-19">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.3</url>
+    </release>
+<release version="1.16.2" date="2026-2-18">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.2</url>
+    </release>
+<release version="1.16.1" date="2026-2-18">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.1</url>
+    </release>
+<release version="1.16.0" date="2026-2-18">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.16.0</url>
+    </release>
+<release version="1.15.9" date="2026-2-17">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.15.9</url>
+    </release>
+<release version="1.15.8" date="2026-2-17">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.15.8</url>
+    </release>
+<release version="1.15.7" date="2026-2-16">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.15.7</url>
+    </release>
+<release version="1.15.6" date="2026-2-16">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.15.6</url>
+    </release>
+<release version="1.15.5" date="2026-2-16">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.15.5</url>
+    </release>
+<release version="1.15.4" date="2026-2-16">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.15.4</url>
+    </release>
+<release version="1.15.3" date="2026-2-15">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.15.3</url>
+    </release>
+<release version="1.15.1" date="2026-2-15">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.15.1</url>
+    </release>
+<release version="1.15.0" date="2026-2-13">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.15.0</url>
+    </release>
+<release version="1.14.4" date="2026-2-13">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.14.4</url>
+    </release>
+<release version="1.14.3" date="2026-2-13">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.14.3</url>
+    </release>
+<release version="1.14.2" date="2026-2-12">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.14.2</url>
+    </release>
+<release version="1.14.1" date="2026-2-12">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.14.1</url>
+    </release>
+<release version="1.14.0" date="2026-2-11">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.14.0</url>
+    </release>
+<release version="1.13.19" date="2026-2-11">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.13.19</url>
+    </release>
+<release version="1.13.18" date="2026-2-11">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.13.18</url>
+    </release>
+<release version="1.13.17" date="2026-2-11">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.13.17</url>
+    </release>
+<release version="1.13.16" date="2026-2-10">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.13.16</url>
+    </release>
+<release version="1.13.15" date="2026-2-10">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.13.15</url>
+    </release>
+<release version="1.13.14" date="2026-2-09">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.13.14</url>
+    </release>
+<release version="1.13.13" date="2026-2-07">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.13.13</url>
+    </release>
+<release version="1.13.12" date="2026-2-06">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.13.12</url>
+    </release>
+<release version="1.13.11" date="2026-2-06">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.13.11</url>
+    </release>
+<release version="1.13.10" date="2026-1-27">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.13.10</url>
+    </release>
+<release version="1.13.9" date="2026-1-26">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.13.9</url>
+    </release>
+<release version="1.13.8" date="2026-1-22">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.13.8</url>
+    </release>
+<release version="1.13.7" date="2026-1-21">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.13.7</url>
+    </release>
+<release version="1.13.6" date="2026-1-20">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.13.6</url>
+    </release>
+<release version="1.13.5" date="2026-1-20">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.13.5</url>
+    </release>
+<release version="1.13.4" date="2026-1-20">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.13.4</url>
+    </release>
+<release version="1.13.3" date="2026-1-18">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.13.3</url>
+    </release>
+<release version="1.13.2" date="2026-1-16">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.13.2</url>
+    </release>
+<release version="1.13.1" date="2026-1-06">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.13.1</url>
+    </release>
+<release version="1.13.0" date="2026-1-03">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.13.0</url>
+    </release>
+<release version="1.12.11" date="2026-1-02">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.12.11</url>
+    </release>
+<release version="1.12.10" date="2025-12-28">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.12.10</url>
+    </release>
+<release version="1.12.9" date="2025-12-28">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.12.9</url>
+    </release>
+<release version="1.12.8" date="2025-12-23">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.12.8</url>
+    </release>
+<release version="1.12.7" date="2025-12-22">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.12.7</url>
+    </release>
+<release version="1.12.6" date="2025-12-22">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.12.6</url>
+    </release>
+<release version="1.12.5" date="2025-12-13">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.12.5</url>
+    </release>
+<release version="1.12.4" date="2025-12-11">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.12.4</url>
+    </release>
+<release version="1.12.3" date="2025-12-08">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.12.3</url>
+    </release>
+<release version="1.12.2" date="2025-12-08">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.12.2</url>
+    </release>
+<release version="1.12.1" date="2025-12-08">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.12.1</url>
+    </release>
+<release version="1.12.0" date="2025-12-05">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.12.0</url>
+    </release>
+<release version="1.11.10" date="2025-11-28">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.11.10</url>
+    </release>
+<release version="1.11.9" date="2025-11-25">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.11.9</url>
+    </release>
+<release version="1.11.8" date="2025-11-25">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.11.8</url>
+    </release>
+<release version="1.11.7" date="2025-11-20">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.11.7</url>
+    </release>
+<release version="1.11.6" date="2025-11-13">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.11.6</url>
+    </release>
+<release version="1.11.5" date="2025-11-08">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.11.5</url>
+    </release>
+<release version="1.11.4" date="2025-11-08">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.11.4</url>
+    </release>
+<release version="1.11.3" date="2025-11-07">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.11.3</url>
+    </release>
+<release version="1.11.2" date="2025-11-05">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.11.2</url>
+    </release>
+<release version="1.11.1" date="2025-11-05">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.11.1</url>
+    </release>
+<release version="1.11.0" date="2025-11-04">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.11.0</url>
+    </release>
+<release version="1.10.18" date="2025-11-02">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.10.18</url>
+    </release>
+<release version="1.10.17" date="2025-10-16">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.10.17</url>
+    </release>
+<release version="1.10.16" date="2025-10-15">
+    <url>https://github.com/Materialious/Materialious/releases/tag/1.10.16</url>
+</release>
+<release version="1.10.15" date="2025-10-15">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.10.15</url>
+    </release>
+<release version="1.10.14" date="2025-10-08">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.10.14</url>
+    </release>
+<release version="1.10.13" date="2025-10-08">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.10.13</url>
+    </release>
+<release version="1.10.12" date="2025-10-07">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.10.12</url>
+    </release>
+<release version="1.10.11" date="2025-9-25">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.10.11</url>
+    </release>
+<release version="1.10.10" date="2025-9-20">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.10.10</url>
+    </release>
+<release version="1.10.9" date="2025-9-19">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.10.9</url>
+    </release>
+<release version="1.10.8" date="2025-9-19">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.10.8</url>
+    </release>
+<release version="1.10.7" date="2025-9-19">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.10.7</url>
+    </release>
+<release version="1.10.6" date="2025-9-05">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.10.6</url>
+    </release>
+<release version="1.10.5" date="2025-9-05">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.10.5</url>
+    </release>
+<release version="1.10.4" date="2025-8-19">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.10.4</url>
+    </release>
+<release version="1.10.3" date="2025-8-11">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.10.3</url>
+    </release>
+<release version="1.10.2" date="2025-8-06">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.10.2</url>
+    </release>
+<release version="1.10.1" date="2025-8-06">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.10.1</url>
+    </release>
+<release version="1.10.0" date="2025-8-04">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.10.0</url>
+    </release>
+<release version="1.9.23" date="2025-7-28">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.23</url>
+    </release>
+<release version="1.9.22" date="2025-7-26">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.22</url>
+    </release>
+<release version="1.9.21" date="2025-7-21">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.21</url>
+    </release>
+<release version="1.9.20" date="2025-7-09">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.20</url>
+    </release>
+<release version="1.9.19" date="2025-7-08">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.19</url>
+    </release>
+<release version="1.9.18" date="2025-6-25">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.18</url>
+    </release>
+<release version="1.9.17" date="2025-6-25">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.17</url>
+    </release>
+<release version="1.9.16" date="2025-6-24">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.16</url>
+    </release>
+<release version="1.9.15" date="2025-6-23">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.15</url>
+    </release>
+<release version="1.9.14" date="2025-6-23">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.14</url>
+    </release>
+<release version="1.9.13" date="2025-6-19">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.13</url>
+    </release>
+<release version="1.9.12" date="2025-6-19">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.12</url>
+    </release>
+<release version="1.9.11" date="2025-6-19">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.11</url>
+    </release>
+<release version="1.9.10" date="2025-6-19">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.10</url>
+    </release>
+<release version="1.9.9" date="2025-6-19">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.9</url>
+    </release>
+<release version="1.9.8" date="2025-6-18">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.8</url>
+    </release>
+<release version="1.9.7" date="2025-6-15">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.7</url>
+    </release>
+<release version="1.9.6" date="2025-6-14">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.6</url>
+    </release>
+<release version="1.9.5" date="2025-6-09">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.5</url>
+    </release>
+<release version="1.9.4" date="2025-6-08">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.4</url>
+    </release>
+<release version="1.9.3" date="2025-6-05">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.3</url>
+    </release>
+    <release version="1.9.2" date="2025-6-05">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.2</url>
+    </release>
+<release version="1.9.1" date="2025-6-05">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.1</url>
+    </release>
+<release version="1.9.0" date="2025-6-04">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.9.0</url>
+    </release>
+<release version="1.8.12" date="2025-6-04">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.8.12</url>
+    </release>
+<release version="1.8.11" date="2025-6-03">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.8.11</url>
+    </release>
+<release version="1.8.10" date="2025-6-02">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.8.10</url>
+    </release>
+<release version="1.8.9" date="2025-6-01">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.8.9</url>
+    </release>
+<release version="1.8.8" date="2025-5-31">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.8.8</url>
+    </release>
+<release version="1.8.7" date="2025-5-30">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.8.7</url>
+    </release>
+<release version="1.8.6" date="2025-5-29">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.8.6</url>
+    </release>
+<release version="1.8.5" date="2025-5-29">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.8.5</url>
+    </release>
+<release version="1.8.4" date="2025-5-05">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.8.4</url>
+    </release>
+    <release version="1.8.3" date="2025-5-05">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.8.3</url>
+    </release>
+<release version="1.8.2" date="2025-5-04">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.8.2</url>
+    </release>
+<release version="1.8.1" date="2025-5-03">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.8.1</url>
+    </release>
+<release version="1.8.0" date="2025-4-30">
+  <url>https://github.com/Materialious/Materialious/releases/tag/1.8.0</url>
+</release>
+<release version="1.7.22" date="2025-4-26">
+  <url>https://github.com/Materialious/Materialious/releases/tag/1.7.22</url>
+</release>
+<release version="1.7.21" date="2025-4-15">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.7.21</url>
+    </release>
+<release version="1.7.20" date="2025-4-08">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.7.20</url>
+    </release>
+<release version="1.7.19" date="2025-4-04">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.7.19</url>
+    </release>
+<release version="1.7.18" date="2025-4-04">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.7.18</url>
+    </release>
+<release version="1.7.17" date="2025-4-02">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.7.17</url>
+    </release>
+<release version="1.7.16" date="2025-4-02">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.7.16</url>
+    </release>
+<release version="1.7.15" date="2025-2-23">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.7.15</url>
+    </release>
+<release version="1.7.14" date="2025-2-21">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.7.14</url>
+    </release>
+<release version="1.7.13" date="2025-2-21">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.7.13</url>
+    </release>
+<release version="1.7.12" date="2025-2-21">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.7.12</url>
+    </release>
+<release version="1.7.11" date="2025-2-21">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.7.11</url>
+    </release>
+<release version="1.6.25" date="2025-1-03">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.6.25</url>
+    </release>
+    <release version="1.6.18" date="2024-10-26">
+      <url>https://github.com/Materialious/Materialious/releases/tag/1.6.18</url>
+    </release>
+  </releases>
+</component>

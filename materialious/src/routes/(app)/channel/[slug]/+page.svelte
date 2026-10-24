@@ -1,0 +1,251 @@
+<script lang="ts">
+	import { getChannelContent, searchChannelContent } from '$lib/api';
+	import type { ChannelContent, ChannelContentTypes, ChannelSortBy } from '$lib/api/model';
+	import PageLoading from '$lib/components/PageLoading.svelte';
+	import { proxyGoogleImage } from '$lib/images';
+	import { cleanNumber } from '$lib/numbers';
+	import { channelCacheStore } from '$lib/store';
+	import { isAndroidTv } from '$lib/utils';
+	import { _ } from '$lib/i18n';
+	import InfiniteLoading, { type InfiniteEvent } from 'svelte-infinite-loading';
+	import ItemsList from '$lib/components/layout/ItemsList.svelte';
+	import Author from '$lib/components/Author.svelte';
+	import { page } from '$app/state';
+	import { isYTBackend } from '$lib/backend';
+	import Share from '$lib/components/Share.svelte';
+	import { resolve } from '$app/paths';
+
+	let tab: ChannelContentTypes = $state('videos');
+
+	let sortBy: ChannelSortBy = $state('newest');
+	const sortByOptions: ChannelSortBy[] = ['newest', 'oldest', 'popular'];
+
+	let showSearch: boolean = $state(false);
+	let channelSearch: string = $state('');
+
+	let displayContent: ChannelContent | undefined = $state(undefined);
+
+	let channelSearchDebounce: ReturnType<typeof setTimeout>;
+
+	$effect(() => {
+		if ($channelCacheStore[page.params.slug]) {
+			displayContent = $channelCacheStore[page.params.slug].displayContent.videos;
+		}
+	});
+
+	async function searchChannel() {
+		if (channelSearchDebounce) clearTimeout(channelSearchDebounce);
+
+		if (channelSearch.trim() === '') {
+			displayContent = $channelCacheStore[page.params.slug].displayContent.videos;
+			return;
+		}
+
+		channelSearchDebounce = setTimeout(async () => {
+			displayContent = {
+				videos: await searchChannelContent(page.params.slug, channelSearch)
+			};
+		}, 200);
+	}
+
+	async function loadMore(event: InfiniteEvent) {
+		if (typeof displayContent === 'undefined') return;
+
+		let completed: boolean;
+		let newContent: ChannelContent;
+		if (displayContent.getContinuation) {
+			newContent = await displayContent.getContinuation();
+			displayContent.getContinuation = newContent.getContinuation;
+
+			completed = newContent.getContinuation === undefined;
+		} else {
+			if (typeof displayContent.continuation === 'undefined') {
+				event.detail.complete();
+				return;
+			}
+
+			newContent = await getChannelContent(page.params.slug, {
+				type: tab,
+				continuation: displayContent.continuation,
+				sortBy: sortBy
+			});
+
+			completed = displayContent.continuation === newContent.continuation;
+			displayContent.continuation = newContent.continuation;
+		}
+
+		if ('videos' in newContent && 'videos' in displayContent) {
+			if (completed) {
+				event.detail.complete();
+			} else {
+				event.detail.loaded();
+			}
+
+			displayContent.videos = [...displayContent.videos, ...newContent.videos];
+		} else if ('playlists' in displayContent && 'playlists' in newContent) {
+			if (completed) {
+				event.detail.complete();
+			} else {
+				event.detail.loaded();
+			}
+
+			displayContent.playlists = [...displayContent.playlists, ...newContent.playlists];
+		}
+	}
+
+	async function changeTab(newTab: 'videos' | 'playlists' | 'streams' | 'shorts') {
+		tab = newTab;
+		displayContent = undefined;
+		displayContent = await getChannelContent(page.params.slug, { type: tab });
+	}
+
+	let bannerSrc = $derived(
+		proxyGoogleImage($channelCacheStore[page.params.slug]?.channel?.authorBanners?.[0]?.url ?? '')
+	);
+</script>
+
+{#if $channelCacheStore[page.params.slug]}
+	<div class="padding">
+		<img src={bannerSrc} width="100%" alt="Channel banner" />
+		<div class="description">
+			<div>
+				<Author
+					channel={{
+						...$channelCacheStore[page.params.slug].channel,
+						subCountText: cleanNumber($channelCacheStore[page.params.slug].channel.subCount)
+					}}
+				/>
+				<p style="width: 60vw;max-height: 150px;overflow: scroll;">
+					<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+					{@html $channelCacheStore[page.params.slug].channel.description}
+				</p>
+			</div>
+			{#if !isAndroidTv()}
+				<Share
+					iconOnly={false}
+					shares={[
+						{
+							type: 'materialious',
+							path: resolve('/channel/[channelId]', {
+								channelId: page.params.slug
+							})
+						},
+						{
+							type: 'youtube',
+							path: `/channel/${page.params.slug}`
+						},
+						{
+							type: 'invidious',
+							path: `/channel/${page.params.slug}`
+						},
+						{
+							type: 'invidious redirect',
+							path: `/channel/${page.params.slug}`
+						}
+					]}
+				/>
+			{/if}
+		</div>
+
+		<div class="tabs left-align scroll">
+			{#if $channelCacheStore[page.params.slug].channel.tabs.includes('videos')}
+				<a class:active={tab === 'videos'} onclick={() => changeTab('videos')} href="#video">
+					<i>movie</i>
+					<span>{$_('videoTabs.videos')}</span>
+				</a>
+			{/if}
+			{#if $channelCacheStore[page.params.slug].channel.tabs.includes('shorts')}
+				<a class:active={tab === 'shorts'} onclick={() => changeTab('shorts')} href="#short">
+					<i>smartphone</i>
+					<span>{$_('videoTabs.shorts')}</span>
+				</a>
+			{/if}
+			{#if $channelCacheStore[page.params.slug].channel.tabs.includes('streams')}
+				<a class:active={tab === 'streams'} onclick={() => changeTab('streams')} href="#stream">
+					<i>stream</i>
+					<span>{$_('videoTabs.streams')}</span>
+				</a>
+			{/if}
+			{#if $channelCacheStore[page.params.slug].channel.tabs.includes('playlists')}
+				<a
+					class:active={tab === 'playlists'}
+					onclick={() => changeTab('playlists')}
+					href="#playlist"
+				>
+					<i>playlist_add_check</i>
+					<span>{$_('videoTabs.playlists')}</span>
+				</a>
+			{/if}
+		</div>
+
+		<div class="grid">
+			<div class="s12 m9 l9">
+				<nav class="group">
+					{#each sortByOptions as sortingOption (sortingOption)}
+						<button
+							class="no-round"
+							onclick={async () => {
+								sortBy = sortingOption;
+
+								displayContent = await getChannelContent(page.params.slug, {
+									type: tab,
+									sortBy: sortBy
+								});
+							}}
+							class:active={sortBy === sortingOption}>{$_(sortingOption)}</button
+						>
+					{/each}
+				</nav>
+			</div>
+			{#if !isYTBackend()}
+				<div class="s12 m3 l3">
+					{#if showSearch}
+						<div class="field suffix prefix suffix small no-margin surface-variant">
+							<i class="front">search</i><input
+								bind:value={channelSearch}
+								oninput={searchChannel}
+								type="text"
+								placeholder={$_('searchPlaceholder')}
+							/>
+						</div>
+					{:else}
+						<nav class="right-align m l">
+							<button onclick={() => (showSearch = true)}><i>search</i></button>
+						</nav>
+						<button class="s" onclick={() => (showSearch = true)}><i>search</i></button>
+					{/if}
+				</div>
+			{/if}
+		</div>
+	</div>
+{/if}
+
+{#if displayContent}
+	{#if 'videos' in displayContent}
+		<ItemsList items={displayContent.videos} />
+	{:else}
+		<ItemsList items={displayContent.playlists} />
+	{/if}
+	<InfiniteLoading on:infinite={loadMore} />
+{:else}
+	<PageLoading />
+{/if}
+
+<style>
+	.description {
+		display: flex;
+		padding: 1em 0;
+		justify-content: center;
+	}
+
+	@media screen and (max-width: 1350px) {
+		.description {
+			flex-direction: column;
+			align-items: flex-start;
+		}
+	}
+
+	.tabs {
+		text-transform: capitalize;
+	}
+</style>

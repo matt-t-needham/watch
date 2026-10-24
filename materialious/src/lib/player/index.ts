@@ -1,0 +1,165 @@
+import { get } from 'svelte/store';
+import type { PlaylistPageVideo, VideoPlay } from '$lib/api/model';
+import {
+	playerAutoplayNextByDefaultStore,
+	activeCaptionTrack,
+	playerDefaultLanguage,
+	playerDefaultQualityStore,
+	playerDefaultSubtitleLanguage,
+	playerPlaylistHistory,
+	playerState,
+	playlistSettingsStore
+} from '$lib/store';
+import { goto } from '$app/navigation';
+import { resolve } from '$app/paths';
+import { loadEntirePlaylist } from '$lib/playlist';
+import { isAndroidTv, unsafeRandomItem } from '$lib/utils';
+import { isItemFiltered } from '$lib/filtering';
+import type shaka from 'shaka-player/dist/shaka-player.ui';
+import ISO6391 from 'iso-639-1';
+import { selectTextTrack } from '$lib/components/player/ClosedCaptions.svelte';
+
+export const playbackRates = [
+	0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 3.75, 4
+];
+export const playerDoubleTapSeek = 10.0;
+
+export function goToPreviousVideo(playlistId: string | null) {
+	const previousVideos = get(playerPlaylistHistory);
+	if (previousVideos.length > 1) {
+		playerState.set(undefined);
+
+		goto(
+			resolve('/watch/[videoId]?playlist=[playlistId]', {
+				videoId: previousVideos[1],
+				playlistId: playlistId ?? ''
+			})
+		);
+		delete previousVideos[1];
+	}
+}
+
+export async function goToNextVideo(video: VideoPlay, playlistId: string | null) {
+	if (!playlistId) {
+		if (get(playerAutoplayNextByDefaultStore)) {
+			const nextVideo = video.recommendedVideos.find((v) => !isItemFiltered(v));
+			if (nextVideo) {
+				goto(
+					resolve(`/${isAndroidTv() ? 'tv' : 'watch'}/[videoId]`, {
+						videoId: nextVideo.videoId
+					}),
+					{
+						replaceState: isAndroidTv()
+					}
+				);
+			}
+		}
+		return;
+	}
+
+	playerState.set(undefined);
+
+	const playlist = await loadEntirePlaylist(playlistId);
+	const playlistVideoIds = playlist.videos.map((value) => {
+		return value.videoId;
+	});
+
+	let goToVideo: PlaylistPageVideo | undefined;
+
+	const shufflePlaylist = get(playlistSettingsStore)[playlistId]?.shuffle ?? false;
+	const loopPlaylist = get(playlistSettingsStore)[playlistId]?.loop ?? false;
+
+	if (shufflePlaylist) {
+		goToVideo = unsafeRandomItem(playlist.videos);
+	} else {
+		const currentVideoIndex = playlistVideoIds.indexOf(video.videoId);
+		const newIndex = currentVideoIndex + 1;
+		if (currentVideoIndex !== -1 && newIndex < playlistVideoIds.length) {
+			goToVideo = playlist.videos[newIndex];
+		} else if (loopPlaylist) {
+			// Loop playlist on end
+			goToVideo = playlist.videos[0];
+		}
+	}
+
+	if (typeof goToVideo !== 'undefined') {
+		goto(
+			resolve(`/${isAndroidTv() ? 'tv' : 'watch'}/[videoId]?playlist=${playlistId}`, {
+				videoId: goToVideo.videoId
+			}),
+			{
+				replaceState: isAndroidTv()
+			}
+		);
+	}
+}
+
+export function restoreQualityPreference(player: shaka.Player) {
+	const numericValue = parseInt(get(playerDefaultQualityStore), 10);
+
+	if (isNaN(numericValue)) {
+		player.configure({ abr: { enabled: true } });
+		return;
+	}
+
+	// Get video-only variant tracks
+	const tracks = player.getVariantTracks().filter((t) => t.height !== null);
+
+	// Sort by resolution descending
+	const sortedTracks = tracks.sort((a, b) => (b.height as number) - (a.height as number));
+
+	// Try exact match
+	let selectedTrack = sortedTracks.find((t) => t.height === numericValue);
+
+	// Try next best (lower than target)
+	if (!selectedTrack) {
+		selectedTrack = sortedTracks.find((t) => (t.height as number) < numericValue);
+	}
+
+	// Try next higher
+	if (!selectedTrack) {
+		selectedTrack = sortedTracks.find((t) => (t.height as number) > numericValue);
+	}
+
+	if (selectedTrack) {
+		player.configure({ abr: { enabled: false } });
+		player.selectVariantTrack(selectedTrack, true);
+	} else {
+		player.configure({ abr: { enabled: true } });
+	}
+}
+
+export function restoreDefaultLanguage(player: shaka.Player) {
+	if (!get(playerDefaultLanguage) || get(playerDefaultLanguage) === 'original') {
+		const audioTrack = player.getAudioTracks().find(({ roles }) => roles.includes('main'));
+		if (audioTrack !== undefined) {
+			player.selectAudioTrack(audioTrack);
+			return;
+		}
+	} else if (get(playerDefaultLanguage)) {
+		const audioTracks = player.getAudioTracks();
+		const langCode = ISO6391.getCode(get(playerDefaultLanguage));
+
+		const audioTrack = audioTracks.find((audioTrack) => audioTrack.language.startsWith(langCode));
+
+		if (audioTrack) {
+			player.selectAudioTrack(audioTrack);
+		}
+	}
+}
+
+export function toggleSubtitles() {
+	const active = get(activeCaptionTrack);
+
+	if (active !== null) {
+		// Subtitles currently visible -> turn them off.
+		activeCaptionTrack.set(null);
+		return;
+	}
+
+	// Subtitles hidden -> enable them using the default subtitle language.
+	const defaultLang = get(playerDefaultSubtitleLanguage);
+	const langCode =
+		defaultLang === 'original' || defaultLang === '' ? '' : ISO6391.getCode(defaultLang);
+	void selectTextTrack(langCode);
+}

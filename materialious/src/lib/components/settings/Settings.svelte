@@ -1,0 +1,214 @@
+<script lang="ts">
+	import { onMount } from 'svelte';
+	import { _ } from '$lib/i18n';
+	import { materialiousBackendStore, rawMasterKeyStore } from '$lib/store';
+	import { keyCodeMap } from '$lib/utils';
+	import { getNextFocus } from '@bbc/tv-lrud-spatial';
+	import {
+		getSettingsTabs,
+		getTabLabel,
+		updateAccountTabs,
+		type SettingsTab,
+		type SettingsTabCategories
+	} from './tabs';
+
+	let activeTab: SettingsTabCategories = $state('interface');
+
+	let triggerListElement: HTMLElement | undefined = $state();
+	let mobileTriggerListElement: HTMLElement | undefined = $state();
+
+	function handleTriggerKeyDown(event: KeyboardEvent, scope: HTMLElement | undefined) {
+		const keyCode = keyCodeMap[event.key];
+		if (!keyCode) return;
+
+		const currentFocus = (event.target as HTMLElement).closest(
+			'[id^="tab-trigger-"]'
+		) as HTMLElement;
+		const nextFocus = getNextFocus(currentFocus, keyCode, scope);
+
+		if (nextFocus && nextFocus.id) {
+			event.preventDefault();
+			const tabId = nextFocus.id.replace('tab-trigger-', '') as SettingsTabCategories;
+			activeTab = tabId;
+			nextFocus.focus();
+		}
+	}
+
+	const isActive = (id: string) => activeTab === id;
+
+	let mobileCategoriesButton: HTMLElement | undefined = $state();
+
+	let tabs: SettingsTab[] = $state(updateAccountTabs(getSettingsTabs()));
+
+	rawMasterKeyStore.subscribe(() => {
+		tabs = updateAccountTabs(tabs);
+	});
+
+	materialiousBackendStore.subscribe(() => {
+		tabs = updateAccountTabs(tabs);
+	});
+
+	let dialogType = $state('');
+	function checkWidth() {
+		if (innerWidth <= 1320) {
+			dialogType = 'right';
+		} else {
+			dialogType = '';
+		}
+	}
+
+	onMount(() => {
+		checkWidth();
+		addEventListener('resize', () => checkWidth());
+	});
+</script>
+
+<dialog id="dialog-settings" class={dialogType + ' surface-container'}>
+	<nav class="s m" style="margin-bottom: 1em;">
+		<h4 class="max">{$_('layout.settings')}</h4>
+		<button class="circle transparent" data-ui="#dialog-settings"><i>close</i></button>
+	</nav>
+
+	<div style="height: 100%;">
+		<nav class="wrap s">
+			{#if tabs}
+				{@const currentTab = tabs.find((tab) => tab.id === activeTab)}
+
+				{#if currentTab}
+					<button
+						bind:this={mobileCategoriesButton}
+						class="large surface-container-highest max"
+						data-ui="#tab-menu"
+					>
+						<i>{currentTab.icon}</i>
+						<span>{getTabLabel(currentTab, $_)}</span>
+						<menu
+							style="width: 100%;"
+							data-ui="#tab-menu"
+							id="tab-menu"
+							bind:this={mobileTriggerListElement}
+							onkeydown={(e) => handleTriggerKeyDown(e, mobileTriggerListElement)}
+							role="tablist"
+							aria-orientation="vertical"
+						>
+							{#each tabs as tab (tab)}
+								<li
+									id="tab-trigger-{tab.id}"
+									role="tab"
+									aria-selected={isActive(tab.id)}
+									tabindex="0"
+									onclick={() => {
+										activeTab = tab.id;
+										mobileCategoriesButton?.click();
+									}}
+								>
+									<i>{tab.icon}</i>
+									<span>{getTabLabel(tab, $_)}</span>
+								</li>
+							{/each}
+						</menu>
+					</button>
+				{/if}
+			{/if}
+		</nav>
+
+		<div class="s">
+			<div class="space"></div>
+			<div class="divider"></div>
+		</div>
+
+		<div class="grid">
+			<div class="s12 m4 l4 m l">
+				<div
+					class="categories padding"
+					bind:this={triggerListElement}
+					onkeydown={(e) => handleTriggerKeyDown(e, triggerListElement)}
+					role="tablist"
+					aria-orientation="vertical"
+				>
+					{#each tabs as tab (tab)}
+						<button
+							id="tab-trigger-{tab.id}"
+							class:active={isActive(tab.id)}
+							class:surface-container-lowest={isActive(tab.id)}
+							class:surface-container-highest={!isActive(tab.id)}
+							role="tab"
+							aria-selected={isActive(tab.id)}
+							tabindex="0"
+							onclick={() => (activeTab = tab.id)}
+						>
+							<i>{tab.icon}</i>
+							<span>{getTabLabel(tab, $_)}</span>
+						</button>
+						<div class="space"></div>
+					{/each}
+				</div>
+			</div>
+			<div class="s12 m8 l8">
+				<div class="settings padding">
+					{#each tabs as tab (tab)}
+						<div role="tabpanel" aria-labelledby="tab-trigger-{tab.id}" hidden={!isActive(tab.id)}>
+							<tab.component />
+						</div>
+					{/each}
+				</div>
+			</div>
+		</div>
+	</div>
+</dialog>
+
+<style>
+	#dialog-settings {
+		width: 800px;
+	}
+
+	.categories {
+		position: sticky;
+		top: 0;
+		height: 100%;
+		overflow: hidden;
+		height: fit-content;
+	}
+
+	.settings {
+		height: 800px;
+		overflow-y: auto;
+		padding-right: 10px;
+	}
+
+	.grid {
+		margin-top: 0 !important;
+		height: 100% !important;
+	}
+
+	.grid .m,
+	.grid .l {
+		border-right: solid 1px var(--secondary);
+		border-radius: 0;
+	}
+
+	dialog {
+		padding: 0;
+	}
+
+	.categories button {
+		width: 100%;
+		box-sizing: border-box !important;
+	}
+
+	@media screen and (max-width: 800px) {
+		#dialog-settings {
+			width: 100%;
+			height: 100%;
+		}
+
+		.settings {
+			height: 100%;
+		}
+
+		#tab-menu {
+			height: fit-content !important;
+			max-height: fit-content !important;
+		}
+	}
+</style>
