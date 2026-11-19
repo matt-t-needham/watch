@@ -8,9 +8,16 @@
 	import type shaka from 'shaka-player/dist/shaka-player.ui';
 	import { onDestroy, onMount } from 'svelte';
 	import { _ } from '$lib/i18n';
-	import { playbackRates } from '$lib/player/index';
 	import { playerMatchFrameRateStore } from '$lib/stores/player';
-	import { setActiveVideoTrack } from './Settings.svelte';
+	import {
+		activeVideoTrack,
+		chooseAutoQuality,
+		chooseQualityHeight,
+		chooseSpeed as applySpeed,
+		isAutoQuality,
+		qualityHeights,
+		tvRates
+	} from '$lib/player/tvPlayback';
 
 	let {
 		player,
@@ -22,24 +29,18 @@
 		displayRefreshRate: number | undefined;
 	} = $props();
 
-	// The TV is no place for 4x; keep the useful range.
-	const tvRates = playbackRates.filter((rate) => rate >= 0.5 && rate <= 2);
-
 	let autoQuality = $state(true);
 	let activeTrack: shaka.extern.VideoTrack | undefined = $state();
 	let speed = $state(1);
 	let dropped = $state(0);
 	let total = $state(0);
 
-	const heights = $derived(
-		[...new Set(player.getVideoTracks().map((track) => track.height ?? 0))]
-			.filter((height) => height > 0)
-			.sort((a, b) => b - a)
-	);
+	const heights = $derived(qualityHeights(player));
 
 	function refresh() {
-		activeTrack = player.getVideoTracks().find((track) => track.active);
-		autoQuality = player.getConfiguration().abr.enabled;
+		// Polled, so changes from the remote (bixRemote.ts) show up here too.
+		activeTrack = activeVideoTrack(player);
+		autoQuality = isAutoQuality(player);
 		speed = playerElement.playbackRate;
 		const quality =
 			playerElement instanceof HTMLVideoElement
@@ -64,26 +65,17 @@
 	);
 
 	function chooseAuto() {
-		player.configure({ abr: { enabled: true } });
+		chooseAutoQuality(player);
 		refresh();
 	}
 
 	function chooseHeight(height: number) {
-		// Highest frame rate and bitrate at that height.
-		const track = player
-			.getVideoTracks()
-			.filter((candidate) => candidate.height === height)
-			.sort(
-				(a, b) => (b.frameRate ?? 0) - (a.frameRate ?? 0) || (b.bandwidth ?? 0) - (a.bandwidth ?? 0)
-			)[0];
-		if (!track) return;
-		player.selectVideoTrack(track, true);
-		setActiveVideoTrack(player);
+		chooseQualityHeight(player, height);
 		refresh();
 	}
 
 	function chooseSpeed(rate: number) {
-		playerElement.playbackRate = rate;
+		applySpeed(playerElement, rate);
 		refresh();
 	}
 

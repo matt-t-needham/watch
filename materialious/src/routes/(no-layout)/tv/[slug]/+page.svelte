@@ -16,6 +16,17 @@
 	import displayMode from '$lib/android/plugins/displayMode';
 	import { playerMatchFrameRateStore } from '$lib/stores/player';
 	import type shaka from 'shaka-player/dist/shaka-player.ui';
+	import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
+	import bixRemote, { reportRemoteState, type RemoteCommand } from '$lib/android/plugins/bixRemote';
+	import {
+		activeVideoTrack,
+		chooseAutoQuality,
+		chooseQualityHeight,
+		chooseSpeed,
+		isAutoQuality,
+		qualityHeights,
+		tvRates
+	} from '$lib/player/tvPlayback';
 
 	let { data } = $props();
 
@@ -59,6 +70,78 @@
 	$effect(() => {
 		void $playerMatchFrameRateStore;
 		void matchFrameRate();
+	});
+
+	// bix: the living-room remote (android/.../BixRemote.java) reads and sets
+	// speed and quality through the same choices as TvPlaybackSettings. Only in
+	// the APK; the web build has no receiver.
+	function reportPlayer(player: shaka.Player, element: HTMLMediaElement) {
+		reportRemoteState({
+			player: true,
+			speed: element.playbackRate,
+			speeds: tvRates,
+			quality: isAutoQuality(player) ? 'auto' : (activeVideoTrack(player)?.height ?? 'auto'),
+			qualities: qualityHeights(player)
+		});
+	}
+
+	function applyRemoteCommand(
+		player: shaka.Player,
+		element: HTMLMediaElement,
+		{ cmd, value }: RemoteCommand
+	) {
+		if (cmd === 'speed') {
+			const rate = Number(value);
+			if (!tvRates.includes(rate)) {
+				console.error(`Remote speed ${value} is not offered`);
+				return;
+			}
+			chooseSpeed(element, rate);
+		} else if (value === 'auto') {
+			chooseAutoQuality(player);
+		} else if (!chooseQualityHeight(player, Number(value))) {
+			console.error(`Remote quality ${value} is not available`);
+			return;
+		}
+		reportPlayer(player, element);
+	}
+
+	$effect(() => {
+		const player = shakaPlayer;
+		const element = playerElement;
+		if (!player || !element || !Capacitor.isNativePlatform()) return;
+
+		const report = () => reportPlayer(player, element);
+		const shakaEvents = [
+			'loaded',
+			'variantchanged',
+			'adaptation',
+			'trackschanged',
+			'abrstatuschanged'
+		];
+		shakaEvents.forEach((name) => player.addEventListener(name, report));
+		element.addEventListener('ratechange', report);
+		report();
+
+		let handle: PluginListenerHandle | undefined;
+		let stopped = false;
+		const removeListener = (added: PluginListenerHandle) =>
+			added.remove().catch((error) => console.error('Removing the remote listener failed:', error));
+		bixRemote
+			.addListener('remoteCommand', (command) => applyRemoteCommand(player, element, command))
+			.then((added) => {
+				handle = added;
+				if (stopped) void removeListener(added);
+			})
+			.catch((error) => console.error('Listening for the remote failed:', error));
+
+		return () => {
+			stopped = true;
+			shakaEvents.forEach((name) => player.removeEventListener(name, report));
+			element.removeEventListener('ratechange', report);
+			if (handle) void removeListener(handle);
+			reportRemoteState({ player: false });
+		};
 	});
 	let showInfo = $state(false);
 	let infoPanel: HTMLElement | undefined = $state();
