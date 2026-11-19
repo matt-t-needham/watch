@@ -190,6 +190,17 @@ find every change).
   `src/lib/web/youtube/minter.ts` uses `backendFetch` (Bearer) for PO tokens.
 - **Back closes the TV panel** — `src/lib/backHandlers.ts`, consulted first by
   the `backButton` listener in `src/routes/+layout.svelte`.
+- **Remote control of speed and quality** — native `android/.../BixRemote.java`
+  (registered in `MainActivity.java`), wrapped by `src/lib/android/plugins/bixRemote.ts`.
+  The living-room remote (av_control) runs `am broadcast -a
+  computer.bix.materialious.REMOTE -p computer.bix.materialious --es cmd
+  state|speed|quality [--es value <v>]` over adb; result 1 with the player
+  state JSON, or 3 with a reason. The TV page reports its state (speed,
+  speeds, quality `"auto"` or a height, qualities) on every change and
+  applies commands; the receiver checks values against the last report. The
+  speed list and quality choice live in `src/lib/player/tvPlayback.ts`,
+  shared with `TvPlaybackSettings.svelte`. The receiver is exported (adb
+  shell is the sender); it can only change speed/quality and read them.
 
 ## Gotchas
 

@@ -13,6 +13,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ColorTheme.class);
         registerPlugin(AndroidTv.class);
         registerPlugin(DisplayMode.class); // bix
+        registerPlugin(BixRemote.class); // bix
         super.onCreate(savedInstanceState);
     }
 
