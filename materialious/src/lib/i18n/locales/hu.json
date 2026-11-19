@@ -119,7 +119,11 @@
             "localVideoFallback": "Helyi videó visszatérés",
             "theatreModeByDefault": "Mozi mód alapértelmezés szerint",
             "youtubeJsFallback": "Helyi videó visszatérés feldolgozása",
-            "networkChangePause": "Szünet a hálózati változáskor"
+            "networkChangePause": "Szünet a hálózati változáskor",
+            "fitScreenByDefault": "Alapértelmezett képernyőhöz igazítás",
+            "autoFullscreen": "Videók automatikus teljes képernyős megjelenítése",
+            "rotateOnTilt": "Teljes képernyős videó elforgatása az eszköz elfordításakor",
+            "androidAutoPip": "Automatikus kép a képben (PiP) módra váltás az alkalmazás elhagyásakor"
         },
         "bookmarklet": "Bookmarklet",
         "instanceUrl": "Példány webcíme",
@@ -179,7 +183,8 @@
             "exportToClipboard": "Vágólapra másolás",
             "exportToFile": "Mentés fájlba",
             "importFromFile": "Importálás fájlból",
-            "exportToShareUrl": "Exportálás megosztási webcímre"
+            "exportToShareUrl": "Exportálás megosztási webcímre",
+            "youtubeSubscriptionsGuide": "YouTube-feliratkozások exportálása"
         },
         "preserveTranslation": "Eredeti fordítás használata",
         "binds": {
@@ -203,7 +208,9 @@
             "tab2": "2. lap",
             "tab3": "3. lap",
             "tab4": "4. lap",
-            "reset": "Visszaállítás alapértelmezésre"
+            "reset": "Visszaállítás alapértelmezésre",
+            "volumeUp": "Hangerő növelése",
+            "volumeDown": "Hangerő csökkentése"
         },
         "showMobileBackButton": "Képernyőn megjelenő navigációs vezérlők",
         "admin": "Admin",
@@ -219,7 +226,14 @@
         "passwordsDoNotMatch": "A jelszavak nem egyeznek",
         "passwordResetFailed": "A jelszó visszaállítása sikertelen. Ellenőrizze a jelenlegi jelszavát.",
         "passwordResetSuccess": "Jelszó sikeresen visszaállítva",
-        "changePassword": "Jelszó megváltoztatása"
+        "changePassword": "Jelszó megváltoztatása",
+        "hideShorts": "Rövidek elrejtése",
+        "disableSettingsSync": "Beállítások szinkronizálásának mellőzése ezen az eszközön",
+        "disableSettingsSyncDescription": "Az eszköz beállításainak helyi tárolása ahelyett, hogy a rendszer a fiókból frissítené vagy oda küldené azokat.",
+        "exportSettingsToAccount": "Beállítások exportálása a fiókba",
+        "importSettingsFromAccount": "Beállítások importálása a fiókból",
+        "settingsExportedToAccount": "A beállítások exportálása a fiókba sikerült",
+        "settingsImportedFromAccount": "A beállítások importálása a fiókból sikerült"
     },
     "enabled": "Engedélyezve",
     "donate": "Adakozás",
@@ -280,7 +294,16 @@
             "fontFamily": "Betűcsalád",
             "opacity": "Átlátszatlanság",
             "subtitleOffset": "Felirat időzítése",
-            "textShadow": "Szövegárnyék"
+            "textShadow": "Szövegárnyék",
+            "playbackControls": "Lejátszásvezérlők",
+            "endsAt": "Befejezés időpontja: {{time}}",
+            "videoInfo": "Videóinformációk",
+            "timeline": "Idővonal",
+            "positionOf": "{{elapsed}} / {{total}}",
+            "play": "Lejátszás",
+            "pause": "Szünet",
+            "subtitles": "Feliratok",
+            "loadingCaptions": "Feliratok betöltése"
         },
         "pauseTimerFinished": "A szünetidő lejárt",
         "pauseOnNetworkChange": "A videó megállt a Wi-Fi-hálózat változása miatt",
@@ -293,7 +316,14 @@
         "downloadComplete": "Letöltés befejeződött",
         "downloadFailed": "Letöltés meghiúsult",
         "downloadType": "Letöltés típusa",
-        "defaultSubtitleLanguage": "Alapértelmezett feliratnyelv"
+        "defaultSubtitleLanguage": "Alapértelmezett feliratnyelv",
+        "playbackErrorTitle": "A lejátszás meghiúsult",
+        "playbackErrorSabr": "A YouTube SABR-adatfolyam nem játszható le. Előfordulhat, hogy a lejátszási munkamenet vagy a videó forrása lejárt.",
+        "playbackErrorInvidious": "A videó forrása nem tölthető be az Invidiousból vagy a társított kiszolgálóról.",
+        "playbackErrorYoutubeJs": "A helyi YouTube.js-videóforrás nem tölthető be.",
+        "playbackErrorUnknown": "A videó lejátszása váratlan hiba miatt nem sikerült.",
+        "retry": "Újrapróbálkozás",
+        "retrying": "Újrapróbálkozás…"
     },
     "title": "Cím",
     "subscriptions": {
@@ -333,7 +363,7 @@
     "invalidInstance": "Ellenőrizze a webcímet. Ha helyes, akkor a példány leállhatott, vagy nem támogatja a harmadik féltől származó klienseket.",
     "cancel": "Mégse",
     "delete": "Törlés",
-    "transcript": "Leirat",
+    "transcript": "Átirat",
     "letterCase": "Címek nagybetűs írásmódja",
     "unsubscribe": "Leiratkozás",
     "subscribe": "Feliratkozás",
@@ -392,7 +422,8 @@
         "shareRoom": "Szoba megosztása",
         "leaveRoom": "Szoba elhagyása",
         "userJoin": "Felhasználó csatlakozott a szobához",
-        "userLeft": "Felhasználó elhagyta a szobát"
+        "userLeft": "Felhasználó elhagyta a szobát",
+        "description": "Videók közös, szinkronizált megtekintése."
     },
     "markAs": {
         "watched": "Jelölés megtekintettként",
@@ -413,11 +444,11 @@
     "subscribeFailed": "Feliratkozás sikertelen",
     "unsubscribeFailed": "Leiratkozás sikertelen",
     "materialiousBackend": "Materialious háttérprogram",
-    "materialiousBackendUrl": "Materialious webcím",
+    "materialiousBackendUrl": "Materialious-példány",
     "materialiousLoginButton": "Bejelentkezés Materialious-fiókkal",
     "materialiousLogout": "Kijelentkezés a Materialious-fiókból",
     "downloadedCompletedAndroid": "Fájl mentve az Android „Letöltések” mappába",
-    "removeMaterialiousBackend": "Materialious példány eltávolítása",
+    "removeMaterialiousBackend": "Materialious-példány eltávolítása",
     "quickConnect": {
         "title": "Gyors csatlakozás",
         "subtitle": "Nincs szükség jelszóra. Adja meg a bejelentkezett eszközén megjelenő 8 karakteres kódot.",
@@ -441,5 +472,50 @@
         "sent": "A bejelentkezési adatok elküldve.",
         "expiresIn": "Lejár {{seconds}} másodperc múlva",
         "done": "Kész"
-    }
+    },
+    "invidiousInstance": "Invidious-példány",
+    "companionRequired": {
+        "description": "A Materialious ezen példánya csak a böngészőhöz készült kiegészítővel, illetve az Android- és asztali alkalmazásokkal működik.",
+        "setupTitle": "Ezen példány hozzáadása a böngészőbővítményhez",
+        "setupStepTwo": "Adja meg ezt az webcímet a „Példány hozzáadása” mezőben:",
+        "instanceUrl": "Példány webcíme",
+        "title": "Böngészőbővítmény szükséges",
+        "installInstruction": "Telepítse és engedélyezze a böngészőhöz készült kiegészítőt, vagy töltse le az alábbi alkalmazások egyikét.",
+        "setupStepOne": "Válassza ki a Materialious Companion ikonját a böngésző eszköztárán.",
+        "setupStepThree": "Válassza a „Hozzáadás” lehetőséget, majd engedélyezze a böngésző engedélykérését.",
+        "copyUrl": "Webcím másolása",
+        "downloadTitle": "Materialious letöltése",
+        "windows": "Windows",
+        "windowsX64": "Windows x64",
+        "windowsX32": "Windows x32",
+        "android": "Android",
+        "fDroid": "F-Droid",
+        "izzyOnDroid": "IzzyOnDroid",
+        "apkUniversal": "APK Universal",
+        "apkX64": "APK x64",
+        "apkArm64": "APK ARM64",
+        "obtainium": "Obtainium",
+        "linux": "Linux",
+        "flathub": "Flathub",
+        "snap": "Snap",
+        "debianUbuntu": "Debian/Ubuntu",
+        "fedoraOpenSuse": "Fedora/OpenSuse",
+        "appImage": "AppImage",
+        "tarball": "Tarball"
+    },
+    "loginWithPassword": "Bejelentkezés jelszóval",
+    "loginWithQuickConnect": "Bejelentkezés a Quick Connect használatával",
+    "transcriptAutoScroll": "Automatikus görgetés",
+    "transcriptLoading": "Átirat betöltése",
+    "transcriptLoadError": "Nem sikerült betölteni az átiratot. A próbálkozás megismétléséhez válasszon nyelvet.",
+    "queue": {
+        "header": "Következik",
+        "empty": "A lejátszási sor üres.",
+        "add": "Hozzáadás a lejátszási sorhoz",
+        "remove": "Eltávolítás a lejátszási sorból",
+        "moveUp": "Előrébb helyezés a lejátszási sorban",
+        "moveDown": "Hátrébb helyezés a lejátszási sorban"
+    },
+    "invidiousSessionExpired": "Az Invidious-munkamenete már nem érvényes. Jelentkezzen be újra.",
+    "invidiousCheckFailed": "Nem sikerült ellenőrizni az Invidious-munkamenetet, illetve betölteni az értesítéseket. Próbálja meg újra."
 }

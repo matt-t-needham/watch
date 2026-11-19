@@ -1,37 +1,51 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { getBestLandscapeThumbnail, imageHandleCors } from '$lib/images';
-	import { letterCase } from '$lib/letterCasing';
-	import { cleanNumber, videoLength } from '$lib/numbers';
+	import { resolveWatchPath } from '#lib/paths';
+	import { getBestLandscapeThumbnail, getBestThumbnail, imageHandleCors } from '#lib/images';
+	import { letterCase } from '#lib/letterCasing';
+	import { cleanNumber, videoLength } from '#lib/numbers';
 	import { onDestroy, onMount } from 'svelte';
-	import { _ } from '$lib/i18n';
+	import { _ } from '#lib/i18n/index';
 	import { get } from 'svelte/store';
 	import { Avatar } from 'melt/builders';
 
 	import {
+		authTokenStore,
+		backendInUseStore,
 		deArrowEnabledStore,
 		filterContentListStore,
 		filterContentUrlAutoUpdateStore,
+		addVideoToQueue,
+		removeVideoFromQueue,
 		playerState
-	} from '$lib/store';
-	import { relativeTimestamp } from '$lib/time';
-	import { queueGetWatchHistory } from '$lib/api/historyPool';
-	import { getDeArrow, getThumbnailDeArrow } from '$lib/api/dearrow';
+	} from '#lib/store';
+	import { relativeTimestamp } from '#lib/time';
+	import { queueGetWatchHistory } from '#lib/api/historyPool';
+	import { getDeArrow, getThumbnailDeArrow } from '#lib/api/dearrow';
 	import AuthorAvatar from '../AuthorAvatar.svelte';
 	import Share from '../Share.svelte';
 	import PlaylistManager from '../PlaylistManager.svelte';
-	import { deleteWatchHistoryItem, saveWatchHistory } from '$lib/api';
-	import type { ThumbnailVideo } from '$lib/thumbnail';
-	import { isAndroidTv, truncate } from '$lib/utils';
-	import { sendToTvAndReport, watchOnTvAvailable } from '$lib/watchOnTv';
+	import { deleteWatchHistoryItem, saveWatchHistory } from '#lib/api';
+	import type { ThumbnailVideo } from '#lib/thumbnail';
+	import { isAndroidTv, isMobile, truncate } from '#lib/utils';
+	import { isYTBackend } from '#lib/backend';
+	import { sendToTvAndReport, watchOnTvAvailable } from '#lib/watchOnTv';
 
 	interface Props {
 		video: ThumbnailVideo;
 		playlistId?: string;
 		sideways?: boolean;
+		forceSideways?: boolean;
+		queueAction?: 'add' | 'remove';
 	}
 
-	let { video = $bindable(), playlistId = '', sideways = $bindable(false) }: Props = $props();
+	let {
+		video = $bindable(),
+		playlistId = '',
+		sideways = $bindable(false),
+		forceSideways = false,
+		queueAction = 'add'
+	}: Props = $props();
 
 	function getRelativePublished() {
 		if (!('published' in video)) return '';
@@ -45,9 +59,7 @@
 			: video.publishedText;
 	}
 
-	const watchPath = resolve(`/${isAndroidTv() ? 'tv' : 'watch'}/[videoId]`, {
-		videoId: video.videoId
-	});
+	const watchPath = resolveWatchPath(video.videoId);
 	const watchUrl = new URL(`${location.origin}${watchPath}`);
 	// bix: send this video to the TV app from the tile's menu.
 	const showWatchOnTv = !isAndroidTv() && watchOnTvAvailable();
@@ -57,10 +69,17 @@
 	}
 
 	let progress: string | undefined = $state();
+	let historyRequest = 0;
 
-	let thumbnailSrc = $state(
-		'thumbnail' in video ? video.thumbnail : getBestLandscapeThumbnail(video.videoThumbnails)
-	);
+	const highQualityThumbnailSrc =
+		'thumbnail' in video ? video.thumbnail : getBestLandscapeThumbnail(video.videoThumbnails);
+	const lowQualityThumbnailSrc =
+		'thumbnail' in video
+			? video.thumbnail
+			: getBestThumbnail(video.videoThumbnails, 320, 240) || highQualityThumbnailSrc;
+	let thumbnailSrc = $state(lowQualityThumbnailSrc);
+	let deArrowThumbnailSelected = false;
+	let useYtCrop = $derived($backendInUseStore === 'yt' && isYTBackend());
 
 	if (get(deArrowEnabledStore)) {
 		try {
@@ -80,6 +99,7 @@
 						thumbnail.timestamp !== null &&
 						(thumbnail.locked || thumbnail.votes > 0 || !thumbnail.original)
 					) {
+						deArrowThumbnailSelected = true;
 						thumbnailSrc = await getThumbnailDeArrow(video.videoId, thumbnail.timestamp, {
 							priority: 'low'
 						});
@@ -94,15 +114,22 @@
 
 	let thumbnailHeight = $state(0);
 	let thumbnailWidth = $state(0);
+	let thumbnailInView = $state(false);
+	let thumbnailDisplaySrc = $state('');
 	let thumbnailImageElement: HTMLImageElement | undefined = $state();
 	let thumbnailElement: HTMLElement | undefined = $state();
 
 	const thumbnail = new Avatar({
-		src: () => imageHandleCors(thumbnailSrc),
+		src: () => thumbnailDisplaySrc,
 		onLoadingStatusChange: () => {
 			if (thumbnailImageElement) {
 				thumbnailHeight = thumbnailImageElement.naturalHeight;
 				thumbnailWidth = thumbnailImageElement.naturalWidth;
+				if (!deArrowThumbnailSelected && thumbnailSrc !== highQualityThumbnailSrc) {
+					setTimeout(() => {
+						if (!deArrowThumbnailSelected) thumbnailSrc = highQualityThumbnailSrc;
+					}, 250);
+				}
 			}
 		}
 	});
@@ -110,6 +137,10 @@
 	let startedSideways = sideways === true;
 	function disableSideways() {
 		if (!startedSideways) return;
+		if (forceSideways) {
+			sideways = true;
+			return;
+		}
 
 		if (window.innerWidth <= 1800) {
 			sideways = false;
@@ -118,52 +149,132 @@
 
 	let thumbnailActionsVisible = $state(false);
 
-	const observer = new IntersectionObserver(([entry]) => {
-		if (!entry.isIntersecting) thumbnailActionsVisible = false;
+	let thumbnailObserver: IntersectionObserver;
+	let visibilityObserver: IntersectionObserver;
+
+	$effect(() => {
+		const src = thumbnailSrc;
+		if (!thumbnailInView) {
+			thumbnailDisplaySrc = '';
+			return;
+		}
+
+		let active = true;
+		imageHandleCors(src)
+			.then((displaySrc) => {
+				if (active) thumbnailDisplaySrc = displaySrc;
+			})
+			.catch(() => {
+				if (active) thumbnailDisplaySrc = '';
+			});
+		return () => {
+			active = false;
+		};
 	});
 
-	onMount(async () => {
+	onMount(() => {
+		thumbnailObserver = new IntersectionObserver(
+			([entry]) => {
+				if (entry.isIntersecting) thumbnailInView = true;
+			},
+			{
+				rootMargin: isMobile()
+					? `${Math.ceil((thumbnailElement?.getBoundingClientRect().height || 180) * 3)}px 0px`
+					: '0px'
+			}
+		);
+		visibilityObserver = new IntersectionObserver(([entry]) => {
+			if (!entry.isIntersecting) thumbnailActionsVisible = false;
+		});
+
 		// Check if sideways should be enabled or disabled.
 		disableSideways();
 
 		addEventListener('resize', disableSideways);
 
-		queueGetWatchHistory(video.videoId).then(async (watchHistory) => {
-			if (watchHistory) {
-				progress = watchHistory.progress.toString();
-			}
+		if (thumbnailElement) {
+			thumbnailObserver.observe(thumbnailElement);
+			visibilityObserver.observe(thumbnailElement);
+		}
+
+		const unsubscribe = authTokenStore.subscribe(() => {
+			const request = ++historyRequest;
+			progress = undefined;
+			queueGetWatchHistory(video.videoId).then((watchHistory) => {
+				if (request === historyRequest) progress = watchHistory?.progress.toString();
+			});
 		});
 
-		if (thumbnailElement) observer.observe(thumbnailElement);
+		return () => {
+			unsubscribe();
+			historyRequest++;
+		};
 	});
 
 	onDestroy(() => {
 		removeEventListener('resize', disableSideways);
-		observer.disconnect();
+		thumbnailObserver.disconnect();
+		visibilityObserver.disconnect();
 	});
 
 	function onVideoSelected() {
+		if (queueAction === 'remove') removeVideoFromQueue(video.videoId);
 		playerState.set(undefined);
 	}
 </script>
 
 <div
 	class:sideways-root={sideways}
+	class:forced-sideways={forceSideways}
 	class:use-flex-column={!sideways}
 	class:tv-root={isAndroidTv()}
 	bind:this={thumbnailElement}
 	tabindex="0"
 	role="button"
-	onmouseleave={() => (thumbnailActionsVisible = false)}
+	onmouseleave={(event) => {
+		const nextTarget = event.relatedTarget;
+		const actionsMenu = event.currentTarget.querySelector('.root-menu');
+		if (!(nextTarget instanceof Node) || !actionsMenu?.contains(nextTarget)) {
+			thumbnailActionsVisible = false;
+		}
+	}}
 >
 	{#if thumbnailActionsVisible}
 		<menu class="active root-menu" onmouseleave={() => (thumbnailActionsVisible = false)}>
+			<li>
+				<button
+					class="transparent max"
+					onclick={() => {
+						if (queueAction === 'remove') removeVideoFromQueue(video.videoId);
+						else {
+							const thumbnail =
+								'thumbnail' in video ? video.thumbnail : video.videoThumbnails[0]?.url;
+							addVideoToQueue({
+								videoId: video.videoId,
+								title: video.title,
+								author: video.author,
+								thumbnail,
+								viewCountText:
+									'viewCountText' in video
+										? video.viewCountText
+										: 'viewCount' in video && video.viewCount !== undefined
+											? cleanNumber(video.viewCount)
+											: undefined
+							});
+						}
+						thumbnailActionsVisible = false;
+					}}
+				>
+					<i>{queueAction === 'remove' ? 'playlist_remove' : 'queue'}</i>
+					<span>{queueAction === 'remove' ? $_('queue.remove') : $_('queue.add')}</span>
+				</button>
+			</li>
 			<li>
 				<Share
 					shares={[
 						{
 							type: 'materialious',
-							path: resolve('/watch/[videoId]', { videoId: video.videoId })
+							path: resolve('/(app)/watch/[slug]', { slug: video.videoId })
 						},
 						{
 							type: 'invidious',
@@ -187,6 +298,7 @@
 			<li>
 				<button
 					onclick={async () => {
+						historyRequest++;
 						if (progress) {
 							await deleteWatchHistoryItem(video.videoId);
 							progress = undefined;
@@ -219,18 +331,20 @@
 							{@const authorId = video.authorId}
 							<li
 								onclick={() => {
-									$filterContentListStore?.push({
-										type: 'video',
-										conditions: [
-											{
-												field: 'authorId',
-												operator: 'equals',
-												values: [authorId],
-												note: $_('layout.filter.channelFiltered', { authorName: video.author })
-											}
-										]
-									});
-									filterContentListStore.set($filterContentListStore);
+									filterContentListStore.update((filterList) => [
+										...filterList,
+										{
+											type: 'video',
+											conditions: [
+												{
+													field: 'authorId',
+													operator: 'equals',
+													values: [authorId],
+													note: $_('layout.filter.channelFiltered', { authorName: video.author })
+												}
+											]
+										}
+									]);
 									filterContentUrlAutoUpdateStore.set(false);
 									thumbnailActionsVisible = false;
 								}}
@@ -243,21 +357,23 @@
 						{/if}
 						<li
 							onclick={() => {
-								$filterContentListStore?.push({
-									type: 'video',
-									conditions: [
-										{
-											field: 'videoId',
-											operator: 'equals',
-											values: [video.videoId],
-											note: $_('layout.filter.videoFiltered', {
-												videoTitle: video.title,
-												authorName: video.author
-											})
-										}
-									]
-								});
-								filterContentListStore.set($filterContentListStore);
+								filterContentListStore.update((filterList) => [
+									...filterList,
+									{
+										type: 'video',
+										conditions: [
+											{
+												field: 'videoId',
+												operator: 'equals',
+												values: [video.videoId],
+												note: $_('layout.filter.videoFiltered', {
+													videoTitle: video.title,
+													authorName: video.author
+												})
+											}
+										]
+									}
+								]);
 								filterContentUrlAutoUpdateStore.set(false);
 								thumbnailActionsVisible = false;
 							}}
@@ -304,36 +420,34 @@
 			tabindex="-1"
 			class="wave thumbnail"
 			href={watchUrl.toString()}
-			data-sveltekit-preload-data="off"
+			data-sveltekit-preload-data="false"
 			onclick={onVideoSelected}
 		>
-			<div class="thumbnail-image">
-				<div class:crop={thumbnailHeight > thumbnailWidth}>
+			<div class="thumbnail-image" class:cover-thumbnail={!useYtCrop}>
+				<div class:crop={thumbnailHeight > thumbnailWidth || useYtCrop} class:yt-crop={useYtCrop}>
 					<img
 						class="responsive"
 						class:watched={progress}
 						{...thumbnail.image}
 						bind:this={thumbnailImageElement}
-						alt="Thumbnail for video"
+						decoding="async"
+						alt=""
 					/>
 				</div>
-				<div
-					{...thumbnail.fallback}
-					class="secondary-container responsive"
-					style="height: 200px;"
-				></div>
+				<div {...thumbnail.fallback} class="secondary-container responsive"></div>
 
 				{#if isAndroidTv()}
 					<div class="tv-play"><i>play_arrow</i></div>
 				{/if}
 
-				{#if !isAndroidTv()}
+				{#if !isAndroidTv() && !sideways}
 					{#if progress}
 						<button
 							class="chip surface-container-highest"
 							onclick={(e) => {
 								e.stopPropagation();
 								e.preventDefault();
+								historyRequest++;
 								(async () => {
 									await deleteWatchHistoryItem(video.videoId);
 									progress = undefined;
@@ -349,6 +463,7 @@
 							onclick={(e) => {
 								e.stopPropagation();
 								e.preventDefault();
+								historyRequest++;
 								(async () => {
 									await saveWatchHistory(video, 1);
 									progress = '0';
@@ -400,11 +515,16 @@
 				tabindex="-1"
 				style="padding-left: 1px;"
 				class="video-title"
-				data-sveltekit-preload-data="off"
+				title={sideways ? video.title : undefined}
+				data-sveltekit-preload-data="false"
 				href={watchUrl.toString()}
 				onclick={onVideoSelected}
 			>
-				<span class="bold" style="width: 100%;">{letterCase(video.title.trimEnd())}</span>
+				<span class="bold" style="width: 100%;"
+					>{sideways
+						? truncate(letterCase(video.title.trimEnd()), 50)
+						: letterCase(video.title.trimEnd())}</span
+				>
 			</a>
 
 			{#if !sideways}
@@ -425,15 +545,15 @@
 								<a
 									tabindex="-1"
 									class:author={!sideways}
-									href={resolve(`/channel/[authorId]`, { authorId: video.authorId })}
-									data-sveltekit-preload-data="off"
+									href={resolve('/(app)/channel/[slug]', { slug: video.authorId })}
+									data-sveltekit-preload-data="false"
 									>{truncate(video.author, 20)}
 								</a>
 							{:else}
 								<p>{truncate(video.author, 20)}</p>
 							{/if}
 
-							{#if !('publishedText' in video) && 'viewCountText' in video}
+							{#if !('publishedText' in video) && 'viewCountText' in video && video.viewCountText}
 								<span>
 									{video.viewCountText ?? cleanNumber(video.viewCount ?? 0)}
 									{$_('views')}
@@ -465,6 +585,14 @@
 				</div>
 			</nav>
 		</div>
+		{#if sideways && !isAndroidTv()}
+			<button
+				onclick={() => (thumbnailActionsVisible = !thumbnailActionsVisible)}
+				class="transparent circle sideways-actions"
+			>
+				<i>more_vert</i>
+			</button>
+		{/if}
 	</div>
 </div>
 
@@ -485,6 +613,12 @@
 		margin-bottom: -22%;
 	}
 
+	.crop.yt-crop img {
+		clip-path: none;
+		transform: scale(1.35);
+		margin-bottom: 0;
+	}
+
 	.use-flex-column {
 		height: 100%;
 		display: flex;
@@ -502,9 +636,9 @@
 	}
 
 	.sideways-root {
-		height: 112px;
+		height: 112.5px;
 		display: flex;
-		align-items: flex-start;
+		align-items: stretch;
 	}
 
 	.sideways-root .thumbnail {
@@ -513,13 +647,26 @@
 	}
 
 	.sideways-root .thumbnail-details {
+		position: relative;
 		flex: 1;
 		min-width: 0;
-		padding-right: 0.5em;
+		overflow: hidden;
+		padding-right: 3.5rem;
+	}
+
+	.sideways-actions {
+		position: absolute;
+		right: 0;
+		bottom: 0;
 	}
 
 	.sideways-root .video-title {
-		overflow: hidden;
+		min-height: 0;
+	}
+
+	.sideways-root .align-end {
+		flex: none;
+		align-items: start;
 	}
 
 	.author-details span,
@@ -529,7 +676,7 @@
 		white-space: normal;
 		word-wrap: break-word;
 		line-height: 1.2;
-		font-size: clamp(0.65rem, 2.5cqw + 0.33rem, 1.15rem);
+		font-size: 1em;
 		margin: 0;
 	}
 
@@ -540,7 +687,6 @@
 
 	.video-title {
 		word-wrap: break-word;
-		overflow: hidden;
 		border-radius: 0px;
 		width: 100%;
 	}
@@ -555,6 +701,23 @@
 
 	.thumbnail-image {
 		position: relative;
+		width: 100%;
+		aspect-ratio: 16 / 9;
+		overflow: hidden;
+	}
+
+	.cover-thumbnail img {
+		object-fit: cover;
+	}
+
+	.thumbnail-image > div:not(.tv-play):not(.chip) {
+		width: 100%;
+		height: 100%;
+	}
+
+	.thumbnail-image > .secondary-container {
+		position: absolute;
+		inset: 0;
 	}
 
 	.thumbnail-image .chip {
@@ -572,6 +735,10 @@
 		align-items: end;
 	}
 
+	.root-menu {
+		bottom: 2rem;
+	}
+
 	.root-menu > li:hover {
 		background-color: transparent;
 	}
@@ -586,13 +753,13 @@
 	}
 
 	.tv-root .bold {
-		font-size: clamp(1rem, 3.5cqw + 0.4rem, 1.75rem);
+		font-size: 1.25em;
 	}
 
 	.tv-root .author-details span,
 	.tv-root .author-details p,
 	.tv-root .author-details a {
-		font-size: clamp(1rem, 2.6cqw + 0.35rem, 1.4rem);
+		font-size: 1em;
 	}
 
 	.tv-play {
@@ -616,12 +783,16 @@
 		box-shadow: 0 0.25rem 1rem rgba(0, 0, 0, 0.35);
 	}
 
-	:global(.item-select-focused) .tv-root .tv-play {
+	:global(.item-select:focus-within) .tv-root .tv-play {
 		display: flex;
 	}
 
 	@media screen and (max-width: 1800px) {
-		.sideways-root .thumbnail {
+		.sideways-root:not(.forced-sideways) {
+			height: auto;
+		}
+
+		.sideways-root:not(.forced-sideways) .thumbnail {
 			width: 100%;
 			max-height: 100%;
 		}
@@ -630,7 +801,7 @@
 			align-items: center;
 		}
 
-		.sideways-root .thumbnail-details {
+		.sideways-root:not(.forced-sideways) .thumbnail-details {
 			display: none;
 		}
 	}

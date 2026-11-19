@@ -1,6 +1,6 @@
-import he from 'he';
+import { decode } from 'he';
 import { Capacitor } from '@capacitor/core';
-export { isAndroidTv } from '$lib/platform';
+export { isAndroidTv } from '#lib/platform';
 
 export function isMobile(): boolean {
 	const userAgent = navigator.userAgent;
@@ -22,7 +22,6 @@ export function truncate(value: string, maxLength: number = 50): string {
 }
 
 export function decodeHtmlCharCodes(str: string): string {
-	const { decode } = he;
 	return decode(str);
 }
 

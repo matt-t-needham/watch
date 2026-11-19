@@ -1,5 +1,6 @@
-import { getPublicEnv } from '$lib/env';
-import { interfaceRegionStore } from '$lib/store';
+import { getPublicEnv } from '#lib/env';
+import { normalizeContentRegion } from '#lib/regions';
+import { interfaceRegionStore } from '#lib/store';
 import { USER_AGENT } from 'bgutils-js/utils';
 import { get } from 'svelte/store';
 import Innertube, { UniversalCache } from 'youtubei.js';
@@ -12,7 +13,7 @@ export async function getInnertube(): Promise<Innertube> {
 	innertube = await Innertube.create({
 		fetch: fetch,
 		cache: new UniversalCache(true),
-		location: get(interfaceRegionStore),
+		location: normalizeContentRegion(get(interfaceRegionStore)) ?? 'US',
 		user_agent: USER_AGENT,
 		player_id: getPublicEnv('PLAYER_ID')
 	});

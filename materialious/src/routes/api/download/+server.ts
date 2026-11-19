@@ -1,8 +1,9 @@
 import { createDownload, getDownloadSession } from '@materialious/shared/download';
 import { error } from '@sveltejs/kit';
 import z from 'zod';
-import { isOwnBackend } from '$lib/shared/index';
-import { clearDownloadProgress, setDownloadProgress } from '$lib/server/downloadProgress';
+import { isOwnBackend } from '#lib/shared/index';
+import { clearDownloadProgress, setDownloadProgress } from '#lib/server/downloadProgress';
+import { assertDownloadEnabled } from '#lib/server/downloadAvailability';
 
 const zDownloadSchema = z.object({
 	videoId: z.string().length(11),
@@ -12,7 +13,8 @@ const zDownloadSchema = z.object({
 	itag: z.coerce.number().int().positive().optional(),
 	format: z.string().optional(),
 	codec: z.string().optional(),
-	language: z.string().optional()
+	language: z.string().optional(),
+	audioTrackId: z.string().optional()
 });
 
 function contentDisposition(filename: string): string {
@@ -24,6 +26,7 @@ function contentDisposition(filename: string): string {
 }
 
 export async function GET({ request, url, locals }) {
+	assertDownloadEnabled();
 	if (isOwnBackend()?.requireAuth && !locals.userId) {
 		throw error(401);
 	}

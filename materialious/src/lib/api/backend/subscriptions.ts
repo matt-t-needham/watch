@@ -1,6 +1,6 @@
-import { parseChannelRSS } from '$lib/api/youtubejs/subscriptions';
-import { getChannelYTjs } from '$lib/api/youtubejs/channel';
-import type { ChannelSubscriptions } from '$lib/dexie';
+import { parseChannelRSS, resumeChannelRSS } from '#lib/api/youtubejs/subscriptions';
+import { getChannelYTjs } from '#lib/api/youtubejs/channel';
+import type { ChannelSubscriptions } from '#lib/dexie';
 import { decryptWithMasterKey, encryptWithMasterKey, getRawKey, getSecureHash } from './encryption';
 import { backendFetch } from './request';
 
@@ -91,5 +91,8 @@ export async function postSubscribeBackend(
 		})
 	});
 
-	if (resp.ok) parseChannelRSS(authorId);
+	if (resp.ok) {
+		resumeChannelRSS(authorId);
+		void parseChannelRSS(authorId);
+	}
 }

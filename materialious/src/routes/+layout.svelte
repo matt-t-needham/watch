@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { runBackHandlers } from '$lib/backHandlers';
-	import { listenForTv } from '$lib/watchOnTv';
-	import { resolvePlatform } from '$lib/platform';
-	import { isMaterialiousAccountActive } from '$lib/backend';
+	import { runBackHandlers } from '#lib/backHandlers';
+	import { listenForTv } from '#lib/watchOnTv';
+	import { resolvePlatform } from '#lib/platform';
+	import { isMaterialiousAccountActive } from '#lib/backend';
+	import { getPublicEnv } from '#lib/env';
 	import {
 		darkModeStore,
 		interfaceAdvancedThemingStore,
@@ -12,13 +13,13 @@
 		materialiousBackendStore,
 		rawMasterKeyStore,
 		themeColorStore
-	} from '$lib/store';
-	import { isAndroidTv } from '$lib/utils';
+	} from '#lib/store';
+	import { isAndroidTv } from '#lib/utils';
 	import ui from 'beercss';
 	import { App } from '@capacitor/app';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import '$lib/css/global.css';
+	import '#lib/css/global.css';
 	import 'beercss';
 	import 'material-dynamic-colors';
 
@@ -28,20 +29,23 @@
 		setStatusBarColor,
 		setTheme,
 		setThemeColors
-	} from '$lib/theme/index';
+	} from '#lib/theme/index';
 
 	import { pwaInfo } from 'virtual:pwa-info';
 	import { onMount } from 'svelte';
 	import { Capacitor } from '@capacitor/core';
-	import colorTheme, { convertToHexColorCode } from '$lib/android/plugins/colorTheme';
+	import colorTheme, { convertToHexColorCode } from '#lib/android/plugins/colorTheme';
 	import { Browser } from '@capacitor/browser';
 	import {
 		bookmarkletLoadFromUrl,
 		loadSettingsFromEnv,
 		syncSettingsToBackend
-	} from '$lib/externalSettings';
-	import { configBackend } from '$lib/api/backend';
-	import { configBackendCache } from '$lib/stores/backend';
+	} from '#lib/externalSettings/index';
+	import { configBackend } from '#lib/api/backend/index';
+	import { configBackendCache } from '#lib/stores/backend';
+	import { isOwnBackend } from '#lib/shared/index';
+	import Update from '#lib/components/settings/Update.svelte';
+	import BrowserCompanionRequired from '#lib/components/access/BrowserCompanionRequired.svelte';
 
 	let { children } = $props();
 
@@ -93,6 +97,8 @@
 
 	App.addListener('backButton', async (data) => {
 		if (runBackHandlers()) return;
+		// Pages can preventDefault() this to handle back themselves (e.g. close an overlay).
+		if (!window.dispatchEvent(new Event('materialious:back', { cancelable: true }))) return;
 		if (data.canGoBack) {
 			window.history.back();
 		} else {
@@ -118,7 +124,7 @@
 				return;
 			}
 
-			goto(resolve(`/watch/[videoId]`, { videoId: videoId }));
+			goto(resolve('/(app)/watch/[slug]', { slug: videoId }));
 		} else {
 			// Auth response handling for Mobile
 			const username = url.searchParams.get('username');
@@ -129,6 +135,8 @@
 					username: username,
 					token: token
 				});
+
+				goto(resolve('/(app)'));
 			}
 		}
 	});
@@ -159,7 +167,7 @@
 			});
 		}
 
-		loadSettingsFromEnv();
+		await loadSettingsFromEnv();
 		// Should always be loaded after env settings
 		// So user preferences overwrite instance preferences.
 		bookmarkletLoadFromUrl();
@@ -184,8 +192,8 @@
 			if (wanted && !stopTvListener) {
 				stopTvListener = listenForTv((videoId, time) => {
 					// Under a second: let the TV resume from watch history.
-					const path = time >= 1 ? `/tv/[videoId]?time=${Math.floor(time)}` : '/tv/[videoId]';
-					goto(resolve(path, { videoId }));
+					const query = time >= 1 ? `?time=${Math.floor(time)}` : '';
+					goto(resolve('/(no-layout)/tv/[slug]', { slug: videoId }) + query);
 				});
 			} else if (!wanted && stopTvListener) {
 				stopTvListener();
@@ -210,6 +218,12 @@
 	});
 
 	let webManifestLink = $derived(pwaInfo ? pwaInfo.webManifest.linkTag : '');
+	let browserCompanionRequired = $derived(
+		isOwnBackend()?.requireCompanion === true &&
+			Capacitor.getPlatform() === 'web' &&
+			typeof window !== 'undefined' &&
+			!window.materialiousCompanionFetch
+	);
 </script>
 
 <svelte:head>
@@ -238,4 +252,12 @@
 	{/if}
 </svelte:head>
 
-{@render children?.()}
+{#if browserCompanionRequired}
+	<BrowserCompanionRequired />
+{:else}
+	{@render children?.()}
+{/if}
+
+{#if getPublicEnv('ANDROID_TV_BUILD') === 'true'}
+	<Update promptMode />
+{/if}

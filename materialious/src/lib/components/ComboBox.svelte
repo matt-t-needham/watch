@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { _ } from '$lib/i18n';
+	import { _ } from '#lib/i18n/index';
 	import { mergeAttrs } from 'melt';
 	import { Combobox } from 'melt/builders';
-	import { isAndroidTv } from '$lib/utils';
+	import { isAndroidTv } from '#lib/utils';
 
 	type ComboOption = { label: string; value: any };
 
@@ -30,7 +30,16 @@
 		}
 	});
 
-	if (defaultValue) combobox.select(defaultValue);
+	let lastDefaultValue: string | null | undefined;
+
+	$effect(() => {
+		const currentDefaultValue = defaultValue;
+		if (!currentDefaultValue || currentDefaultValue === lastDefaultValue) return;
+
+		lastDefaultValue = currentDefaultValue;
+		initialValueChange = true;
+		combobox.select(currentDefaultValue);
+	});
 
 	let valueToLabel: Record<string, string> = {};
 

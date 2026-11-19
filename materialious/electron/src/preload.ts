@@ -2,8 +2,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 require('./rt/electron-rt');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-	generatePoToken: (requestKey: string, visitorData: string) =>
-		ipcRenderer.invoke('generatePoToken', requestKey, visitorData),
+	loginInvidious: (credentials: { instance: string; username: string; password: string }) =>
+		ipcRenderer.invoke('loginInvidious', credentials),
+	generatePoToken: (requestKey: string, visitorData: string, forceRefresh = false) =>
+		ipcRenderer.invoke('generatePoToken', requestKey, visitorData, forceRefresh),
 	setAllowInsecureSSL: async (allow: boolean) => {
 		return await ipcRenderer.invoke('setAllowInsecureSSL', allow);
 	},

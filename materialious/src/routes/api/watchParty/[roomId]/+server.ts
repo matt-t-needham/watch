@@ -1,13 +1,13 @@
 import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import type { WatchPartyEvent } from '$lib/watchParty';
+import type { WatchPartyEvent } from '#lib/watchParty';
 import {
 	broadcastWatchParty,
 	createWatchPartyClientId,
 	joinWatchParty,
 	leaveWatchParty,
 	type WatchPartyClient
-} from '$lib/server/watchParty';
+} from '#lib/server/watchParty';
 
 // bix: Watch on TV's rooms are named in a header, not the path, so the
 // secret never reaches access or error logs: /api/watchParty/bix-tv with

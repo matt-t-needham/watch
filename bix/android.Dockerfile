@@ -26,17 +26,22 @@ ENV PATH=$ANDROID_HOME/build-tools/36.0.0:$PATH
 
 FROM sdk AS deps
 WORKDIR /src
+# bix: materialious/.npmrc (legacy-peer-deps) is excluded by .dockerignore, so set the same here.
+ENV NPM_CONFIG_LEGACY_PEER_DEPS=true
 COPY package.json package-lock.json ./
 COPY shared/package.json shared/package-lock.json* shared/
 COPY static/nodejsAndroid/ static/nodejsAndroid/
 COPY scripts/ scripts/
+# bix: the root postinstall runs patch-package --error-on-fail, so the patches must be here.
+COPY patches/ patches/
 RUN npm ci && (cd shared && npm ci) && (cd static/nodejsAndroid && npm ci)
 
 FROM deps AS build
 ARG VERSION_CODE=1
 ARG VERSION_NAME=dev
 COPY . .
-RUN npm run build && npm prune --omit=dev && npx cap sync android
+# bix: cap sync reads capacitor.config.ts, so it needs the dev dependencies (TypeScript); prune after.
+RUN npm run build && npx cap sync android && npm prune --omit=dev
 WORKDIR /src/android
 # Gradle downloads its wrapper and dependencies here; cache them between builds.
 RUN --mount=type=cache,target=/root/.gradle \

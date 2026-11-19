@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { getComments } from '$lib/api';
-	import { type Comment, type Comments } from '$lib/api/model';
-	import { getBestThumbnail, proxyGoogleImage } from '$lib/images';
-	import { numberWithCommas } from '$lib/numbers';
+	import { getComments } from '#lib/api/index';
+	import { invidiousInstanceStore } from '#lib/store';
+	import { type Comment, type Comments } from '#lib/api/model';
+	import { getBestThumbnail, imageHandleCors, proxyGoogleImage } from '#lib/images';
+	import { numberWithCommas } from '#lib/numbers';
 	import CommentSelf from './Comment.svelte';
-	import { truncate } from '$lib/utils';
-	import { _ } from '$lib/i18n';
-	import { extractActualLink } from '$lib/description';
+	import { truncate } from '#lib/utils';
+	import { _ } from '#lib/i18n/index';
+	import { extractActualLink, getTimestampFromUrl } from '#lib/description';
 	import { Avatar } from 'melt/builders';
 	import { mergeAttrs } from 'melt';
 
@@ -15,13 +16,14 @@
 		comment: Comment;
 		videoId: string;
 		isSubComp?: boolean;
+		onTimestampClick?: (time: number) => void;
 	}
 
-	let { comment, videoId, isSubComp = false }: Props = $props();
+	let { comment, videoId, isSubComp = false, onTimestampClick }: Props = $props();
 
 	let replies: Comments | undefined = $state(undefined);
 
-	const replyText: string = comment.replies?.replyCount > 1 ? $_('replies') : $_('reply');
+	const replyText = $derived((comment.replies?.replyCount ?? 0) > 1 ? $_('replies') : $_('reply'));
 
 	async function loadReplies(continuation: string) {
 		if (comment?.getReplies) {
@@ -56,11 +58,11 @@
 				const match = realHref?.match(/t=(\d+)/);
 				const timestamp = match ? match[1] : '';
 
-				const newHref = resolve(`/watch/[videoId]?time=${timestamp}`, { videoId });
+				const newHref = `${resolve('/(app)/watch/[slug]', { slug: videoId })}?time=${timestamp}`;
 
 				link.setAttribute('href', newHref);
 				link.removeAttribute('data-onclick');
-				link.setAttribute('data-sveltekit-preload-data', 'off');
+				link.setAttribute('data-sveltekit-preload-data', 'false');
 			} else {
 				link.setAttribute('href', realHref);
 				link.setAttribute('target', '_blank');
@@ -68,13 +70,52 @@
 			}
 		});
 
+		// Invidious comment HTML can contain root-relative custom emoji URLs
+		// (for example /ggpht/...). Resolve them against Invidious, not the
+		// Materialious frontend's origin.
+		if ($invidiousInstanceStore) {
+			doc.querySelectorAll('img[src^="/"]').forEach((image) => {
+				const src = image.getAttribute('src');
+				if (src) image.setAttribute('src', new URL(src, `${$invidiousInstanceStore}/`).href);
+			});
+		}
+
 		return doc.documentElement.outerHTML;
 	}
 
-	const avatar = new Avatar({ src: proxyGoogleImage(getBestThumbnail(comment.authorThumbnails)) });
+	function handleCommentClick(event: MouseEvent) {
+		const target = event.target;
+		if (!(target instanceof Element)) return;
+		const anchor = target.closest('a');
+		if (!anchor) return;
+		const timestamp = getTimestampFromUrl(anchor.href, location.href);
+		if (timestamp === null) return;
+
+		event.preventDefault();
+		onTimestampClick?.(timestamp);
+	}
+
+	let avatarSrc = $state('');
+	const avatar = new Avatar({ src: () => avatarSrc });
+
+	$effect(() => {
+		const src = proxyGoogleImage(getBestThumbnail(comment.authorThumbnails));
+		let active = true;
+		avatarSrc = '';
+		imageHandleCors(src)
+			.then((url) => {
+				if (active) avatarSrc = url;
+			})
+			.catch(() => {
+				if (active) avatarSrc = '';
+			});
+		return () => {
+			active = false;
+		};
+	});
 </script>
 
-<article class="comment" class:border={!isSubComp}>
+	<article class="comment" class:border={!isSubComp} onclick={handleCommentClick}>
 	<div class="comment-header">
 		<img {...avatar.image} class="circle small" alt="comment profile" />
 		<button
@@ -84,7 +125,7 @@
 			})}>{comment.author[1]}</button
 		>
 		<div class="comment-info">
-			<a href={resolve(`/channel/[authorId]`, { authorId: comment.authorId })} class="author">
+			<a href={resolve('/(app)/channel/[slug]', { slug: comment.authorId })} class="author">
 				<span class="bold" class:channel-owner={comment.authorIsChannelOwner}>
 					{truncate(comment.author, 12)}
 				</span>
@@ -99,7 +140,7 @@
 				<p class="no-margin no-padding"><i>thumb_up</i> {numberWithCommas(comment.likeCount)}</p>
 				{#if comment.replies && !replies}
 					<button
-						onclick={async () => loadReplies(comment.replies.continuation)}
+						onclick={async () => loadReplies(comment.replies?.continuation ?? '')}
 						class="transparent replies"
 					>
 						<i>expand_more</i>
@@ -117,7 +158,7 @@
 
 	{#if replies}
 		{#each replies.comments as reply (reply)}
-			<CommentSelf comment={reply} {videoId} isSubComp={true} />
+			<CommentSelf comment={reply} {videoId} isSubComp={true} {onTimestampClick} />
 		{/each}
 	{/if}
 </article>

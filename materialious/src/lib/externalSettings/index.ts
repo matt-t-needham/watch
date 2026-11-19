@@ -4,17 +4,35 @@ import { z } from 'zod';
 
 import { persistedStores, ensureBackendPersistedStores, type PersistedStore } from './settings';
 
-import { getPublicEnv } from '$lib/env';
-import { isMaterialiousAccountActive } from '$lib/backend';
-import { addOrUpdateKeyValue, getKeyValue } from '$lib/api/backend/keyvalue';
-import { rawMasterKeyStore } from '$lib/store';
+import { getPublicEnv } from '#lib/env';
+import { isMaterialiousAccountActive } from '#lib/backend';
+import { addOrUpdateKeyValue, getKeyValue } from '#lib/api/backend/keyvalue';
+import {
+	consumeInitialLoadState,
+	disableSettingsSyncStore,
+	hydrateSettings,
+	rawMasterKeyStore
+} from '#lib/store';
 
 const dontAutoSync = ['authToken'];
 
 export async function syncSettingsToBackend() {
-	if (!isMaterialiousAccountActive() || !get(rawMasterKeyStore)) return;
+	// Never push store defaults to the account before Android has finished
+	// loading the locally persisted values.
+	await hydrateSettings();
+
+	if (
+		!isMaterialiousAccountActive() ||
+		!get(rawMasterKeyStore) ||
+		get(disableSettingsSyncStore)
+	)
+		return;
 
 	ensureBackendPersistedStores();
+
+	// Some stores are only created above, so make sure their initial local
+	// read has completed before remote values are applied.
+	await hydrateSettings();
 
 	await Promise.all(
 		persistedStores.map(async (store) => {
@@ -22,7 +40,7 @@ export async function syncSettingsToBackend() {
 
 			getKeyValue(store.name)
 				.then((currentKeyValue) => {
-					if (currentKeyValue !== null) {
+					if (currentKeyValue !== null && !get(disableSettingsSyncStore)) {
 						const currentKeyValueParsed = parseWithSchema(store.schema, currentKeyValue);
 						if (currentKeyValueParsed !== null && currentKeyValueParsed !== undefined) {
 							store.store.set(currentKeyValueParsed);
@@ -35,7 +53,7 @@ export async function syncSettingsToBackend() {
 
 			let initialLoad = true;
 			store.store.subscribe((value) => {
-				if (!get(rawMasterKeyStore)) return;
+				if (!get(rawMasterKeyStore) || get(disableSettingsSyncStore)) return;
 
 				if (initialLoad) {
 					initialLoad = false;
@@ -51,6 +69,46 @@ export async function syncSettingsToBackend() {
 					// Remote instance unreachable while syncing.
 				});
 			});
+		})
+	);
+}
+
+export async function exportSettingsToAccount() {
+	await hydrateSettings();
+	if (!isMaterialiousAccountActive() || !get(rawMasterKeyStore)) {
+		throw new Error('A Materialious account must be signed in.');
+	}
+
+	ensureBackendPersistedStores();
+	await hydrateSettings();
+	await Promise.all(
+		persistedStores.map(async (store) => {
+			if (store.excludeFromBackendSync || dontAutoSync.includes(store.name)) return;
+			const value = get(store.store);
+			if (value === undefined) return;
+			await addOrUpdateKeyValue(
+				store.name,
+				store.serialize ? store.serialize(value) : value?.toString()
+			);
+		})
+	);
+}
+
+export async function importSettingsFromAccount() {
+	await hydrateSettings();
+	if (!isMaterialiousAccountActive() || !get(rawMasterKeyStore)) {
+		throw new Error('A Materialious account must be signed in.');
+	}
+
+	ensureBackendPersistedStores();
+	await hydrateSettings();
+	await Promise.all(
+		persistedStores.map(async (store) => {
+			if (store.excludeFromBackendSync || dontAutoSync.includes(store.name)) return;
+			const value = await getKeyValue(store.name);
+			if (value === null) return;
+			const parsed = parseWithSchema(store.schema, value);
+			if (parsed !== undefined) store.store.set(parsed);
 		})
 	);
 }
@@ -93,10 +151,7 @@ function setStores(
 	}
 }
 
-export async function loadSettingsFromFile(
-	file: File,
-	storeNames?: string[]
-) {
+export async function loadSettingsFromFile(file: File, storeNames?: string[]) {
 	const fileContents = await file.text();
 
 	let fileJson: Record<any, any> | undefined;
@@ -112,7 +167,7 @@ export async function loadSettingsFromFile(
 	setStores(fileJson, true, allowedNames);
 }
 
-export function loadSettingsFromEnv() {
+export async function loadSettingsFromEnv() {
 	const defaultSettings = getPublicEnv('DEFAULT_SETTINGS');
 
 	if (typeof defaultSettings !== 'string') return;
@@ -123,15 +178,7 @@ export function loadSettingsFromEnv() {
 	if (raw.startsWith('"')) raw = raw.slice(1);
 	if (raw.endsWith('"')) raw = raw.slice(0, -1);
 
-	let isInitialLoad = false;
-	try {
-		if (localStorage.getItem('initialLoadState') === null) {
-			isInitialLoad = true;
-			localStorage.setItem('initialLoadState', '0');
-		}
-	} catch {
-		isInitialLoad = true;
-	}
+	const isInitialLoad = await consumeInitialLoadState();
 
 	try {
 		const parsed = JSON.parse(raw);

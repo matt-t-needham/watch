@@ -1,18 +1,22 @@
 <script lang="ts">
-	import { goto, pushState } from '$app/navigation';
+	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import { _ } from '$lib/i18n';
-	import { playerState } from '$lib/store';
-	import { getMaterialiousBackendUrl } from '$lib/backend';
-	import { shareURL } from '$lib/download';
+	import { _ } from '#lib/i18n/index';
+	import { playerState } from '#lib/store';
+	import { getMaterialiousBackendUrl } from '#lib/backend';
+	import { shareURL } from '#lib/download';
 	import sodium from 'libsodium-wrappers-sumo';
 	import { onDestroy, onMount } from 'svelte';
 	import { SvelteURLSearchParams } from 'svelte/reactivity';
-	import { watchPartyEventSchema, type WatchPartyEvent } from '$lib/watchParty';
+	import { watchPartyEventSchema, type WatchPartyEvent } from '#lib/watchParty';
+	import ui from 'beercss';
+
+	let { onLeave }: { onLeave?: () => void } = $props();
 
 	let room: { id: string; source: EventSource; clientId?: string } | undefined = $state();
 	let creating = $state(false);
+	let connectionState = $state<'connecting' | 'connected' | 'reconnecting'>('connecting');
 	let roomCode = $state('');
 	let pending: WatchPartyEvent | undefined = $state();
 	let lastSentVideoId: string | undefined;
@@ -20,7 +24,10 @@
 	let baselineVideoId: string | undefined;
 	let suppressUntil = 0;
 
-	onMount(() => joinRoomFromUrl());
+	onMount(() => {
+		joinRoomFromUrl();
+		ui('#dialog-watch-party');
+	});
 
 	onDestroy(() => {
 		room?.source.close();
@@ -42,10 +49,12 @@
 	function watchPartyUrl(videoId: string): string {
 		const currentSearchParams = new SvelteURLSearchParams(window.location.search);
 		if (room) currentSearchParams.set('room', room.id);
-		return `${resolve('/watch/[videoId]', { videoId })}?${currentSearchParams.toString()}`;
+		return `${resolve('/(app)/watch/[slug]', { slug: videoId })}?${currentSearchParams.toString()}`;
 	}
 
 	function connect(roomId: string, announceCurrent: boolean) {
+		room?.source.close();
+		connectionState = 'connecting';
 		baselineVideoId = announceCurrent ? undefined : currentWatchVideoId();
 
 		const source = new EventSource(`${getMaterialiousBackendUrl()}/api/watchParty/${roomId}`);
@@ -60,11 +69,16 @@
 
 			if (isHello(payload)) {
 				room = { id: roomId, source, clientId: payload.clientId };
+				connectionState = 'connected';
 				suppressUntil = Date.now() + 4000;
 				return;
 			}
 
 			handleActionData(payload);
+		};
+
+		source.onerror = () => {
+			connectionState = 'reconnecting';
 		};
 
 		room = { id: roomId, source };
@@ -199,9 +213,9 @@
 			connect(roomId, true);
 
 			const currentSearchParams = new SvelteURLSearchParams(window.location.search);
-			currentSearchParams.set('room', roomId);
 
-			pushState(`?${currentSearchParams.toString()}`, { replaceState: false });
+			currentSearchParams.set('room', roomId);
+			goto(`?${currentSearchParams.toString()}`, { shallow: true, state: { replaceState: false } });
 		} finally {
 			creating = false;
 		}
@@ -232,10 +246,9 @@
 		connect(roomId, false);
 
 		const currentSearchParams = new SvelteURLSearchParams(window.location.search);
+
 		currentSearchParams.set('room', roomId);
-
-		pushState(`?${currentSearchParams.toString()}`, { replaceState: false });
-
+		goto(`?${currentSearchParams.toString()}`, { shallow: true, state: { replaceState: false } });
 		roomCode = '';
 	}
 
@@ -251,6 +264,7 @@
 	function leaveRoom() {
 		room?.source.close();
 		room = undefined;
+		connectionState = 'connecting';
 		pending = undefined;
 		lastSentVideoId = undefined;
 		lastRemoteVideoId = undefined;
@@ -258,9 +272,16 @@
 		suppressUntil = 0;
 
 		const currentSearchParams = new SvelteURLSearchParams(window.location.search);
-		currentSearchParams.delete('room');
 
-		pushState(`?${currentSearchParams.toString()}`, { replaceState: false });
+		currentSearchParams.delete('room');
+		goto(`?${currentSearchParams.toString()}`, { shallow: true, state: { replaceState: false } });
+		const dialog = document.querySelector<HTMLDialogElement>('#dialog-watch-party');
+		if (dialog?.open) {
+			ui('#dialog-watch-party');
+			requestAnimationFrame(() => onLeave?.());
+		} else {
+			onLeave?.();
+		}
 	}
 
 	let attachedPlayerElement: HTMLMediaElement | undefined;
@@ -324,44 +345,161 @@
 	});
 </script>
 
-<article>
-	<h4>{$_('watchParty.header')}</h4>
+<div>
+	<dialog id="dialog-watch-party" class="right surface-container watch-party-dialog">
+		<article class="watch-party">
+			<header class="row">
+				<div class="max">
+					<h4>{$_('watchParty.header')}</h4>
+					<p class="muted">{$_('watchParty.description')}</p>
+				</div>
+				{#if room}
+					<span class="chip" class:primary-container={connectionState === 'connected'}>
+						<span class="status-dot" class:online={connectionState === 'connected'}></span>
+						{connectionState === 'connected' ? 'Connected' : $_('connecting')}
+					</span>
+				{/if}
+				<button
+					class="circle transparent"
+					data-ui="#dialog-watch-party"
+					aria-label="Close watch party"
+				>
+					<i>close</i>
+				</button>
+			</header>
 
-	{#if !room}
-		<div class="space"></div>
+			{#if !room}
+				<div class="room-actions">
+					<button onclick={createRoom} disabled={creating} class="primary">
+						<i>groups</i>
+						<span>{creating ? $_('connecting') : $_('watchParty.createRoom')}</span>
+					</button>
+					<nav class="group join-room">
+						<div class="field label surface-container-highest left-round">
+							<input
+								tabindex="0"
+								id="watch-party-join-code"
+								bind:value={roomCode}
+								type="text"
+								placeholder=" "
+							/>
+							<label tabindex="-1" for="watch-party-join-code">{$_('watchParty.roomID')}</label>
+						</div>
+						<button
+							type="button"
+							onclick={joinRoom}
+							disabled={!roomCode.trim()}
+							class="primary right-round"
+							aria-label={$_('watchParty.joinRoom')}
+							title={$_('watchParty.joinRoom')}
+						>
+							<i>login</i>
+						</button>
+					</nav>
+				</div>
+			{:else}
+				<div class="active-room">
+					<div class="field label fill round">
+						<input tabindex="0" id="watch-party-room-id" readonly value={room.id} placeholder=" " />
+						<label tabindex="-1" for="watch-party-room-id">{$_('watchParty.roomID')}</label>
+					</div>
+					<button onclick={shareRoom} class="primary share-room-button">
+						<i>share</i>
+						<span>{$_('watchParty.shareRoom')}</span>
+					</button>
+					<button onclick={leaveRoom} class="surface-container-highest">
+						<i>logout</i>
+						<span>{$_('watchParty.leaveRoom')}</span>
+					</button>
+				</div>
+			{/if}
+		</article>
+	</dialog>
+</div>
 
-		<button onclick={createRoom} disabled={creating} class="surface-container-highest">
-			<span>{$_('watchParty.createRoom')}</span>
-		</button>
+<style>
+	.watch-party-dialog {
+		inline-size: min(32rem, calc(100vw - 2rem));
+		min-inline-size: 0;
+		max-width: 100%;
+		padding: 1rem;
+	}
 
-		<div class="space"></div>
+	.watch-party {
+		margin: 0;
+		padding: 0;
+		background: transparent;
+		box-shadow: none;
+	}
 
-		<nav>
-			<div class="field label surface-container-highest small" style="max-width: 18rem;">
-				<input tabindex="0" id="watch-party-join-code" bind:value={roomCode} type="text" />
-				<label tabindex="-1" for="watch-party-join-code">{$_('watchParty.roomID')}</label>
-			</div>
-			<button onclick={joinRoom} disabled={!roomCode.trim()} class="surface-container-highest">
-				<span>{$_('watchParty.joinRoom')}</span>
-			</button>
-		</nav>
-	{:else}
-		<div class="space"></div>
+	.watch-party header {
+		align-items: center;
+		margin-bottom: 1rem;
+	}
 
-		<nav>
-			<div class="field label surface-container-highest small" style="max-width: 18rem;">
-				<input tabindex="0" id="watch-party-room-id" readonly value={room.id} />
-				<label tabindex="-1" for="watch-party-room-id">{$_('watchParty.roomID')}</label>
-			</div>
-			<button onclick={shareRoom} class="surface-container-highest">
-				<i>share</i>
-				<span>{$_('watchParty.shareRoom')}</span>
-			</button>
-		</nav>
+	.watch-party h4,
+	.watch-party p {
+		margin: 0;
+	}
 
-		<div class="space"></div>
-		<button onclick={leaveRoom} class="surface-container-highest">
-			{$_('watchParty.leaveRoom')}
-		</button>
-	{/if}
-</article>
+	.watch-party p {
+		margin-top: 0.25rem;
+		opacity: 0.72;
+	}
+
+	.room-actions,
+	.active-room {
+		display: grid;
+		gap: 0.75rem;
+	}
+
+	.active-room {
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: center;
+	}
+
+	.active-room .field {
+		min-width: 0;
+	}
+
+	.join-room {
+		width: 100%;
+	}
+
+	.join-room .field {
+		flex: 1 1 auto;
+		min-width: 0;
+	}
+
+	.join-room button {
+		flex: 0 0 3rem;
+		width: 3rem;
+		height: 3rem;
+	}
+
+	.share-room-button {
+		height: 3rem;
+	}
+
+	.status-dot {
+		width: 0.5rem;
+		height: 0.5rem;
+		border-radius: 50%;
+		background: var(--outline);
+	}
+
+	.status-dot.online {
+		background: var(--primary);
+	}
+
+	@media (max-width: 36rem) {
+		.active-room {
+			grid-template-columns: minmax(0, 1fr);
+		}
+
+		.active-room button {
+			box-sizing: border-box;
+			width: 100%;
+		}
+	}
+</style>

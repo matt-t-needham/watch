@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { _ } from '$lib/i18n';
+	import { _ } from '#lib/i18n/index';
 	import { PinInput } from 'melt/builders';
 	import { onDestroy } from 'svelte';
-	import { backendFetch } from '$lib/api/backend/request';
-	import { isOwnBackend } from '$lib/shared';
+	import { backendFetch } from '#lib/api/backend/request';
+	import { isOwnBackend } from '#lib/shared/index';
 	import { solveChallenge } from 'altcha-lib';
 	import { deriveKey } from 'altcha-lib/algorithms/web/pbkdf2';
 	import {
@@ -16,17 +16,24 @@
 		applyQuickConnectCredentials,
 		type QuickConnectCredentials,
 		type CaptchaPayload
-	} from '$lib/api/backend/quickconnect';
-	import { quickConnectTtlMs } from '$lib/api/backend/quickconnect';
-	import { syncAuthTokenFromCloud } from '$lib/auth';
-	import { isAndroidTv } from '$lib/utils';
+	} from '#lib/api/backend/quickconnect';
+	import { quickConnectTtlMs } from '#lib/api/backend/quickconnect';
+	import { syncAuthTokenFromCloud } from '#lib/auth';
+	import { isAndroidTv } from '#lib/utils';
 
 	interface Props {
 		onConnected?: (credentials: QuickConnectCredentials) => void;
 		captchaPayload?: CaptchaPayload | null;
+		getCaptcha?: () => Promise<{ verified: boolean; payload: CaptchaPayload | null }>;
+		onCaptchaUsed?: () => void;
 	}
 
-	let { onConnected = () => {}, captchaPayload: providedCaptcha = null }: Props = $props();
+	let {
+		onConnected = () => {},
+		captchaPayload: providedCaptcha = null,
+		getCaptcha,
+		onCaptchaUsed = () => {}
+	}: Props = $props();
 
 	const captchaDisabled = $derived(!!isOwnBackend()?.captchaDisabled);
 
@@ -39,7 +46,11 @@
 
 	let tvInputEl = $state<HTMLInputElement | undefined>(undefined);
 
-	let captchaPayload = $state<CaptchaPayload | null>(providedCaptcha);
+	let captchaPayload = $state<CaptchaPayload | null>(null);
+
+	$effect(() => {
+		if (providedCaptcha) captchaPayload = providedCaptcha;
+	});
 
 	let pollTimer: ReturnType<typeof setInterval> | undefined;
 	let errorResetTimer: ReturnType<typeof setTimeout> | undefined;
@@ -75,12 +86,18 @@
 	}
 
 	async function ensureCaptcha(): Promise<boolean> {
+		if (getCaptcha) {
+			const result = await getCaptcha();
+			captchaPayload = result.payload;
+			return result.verified;
+		}
 		if (captchaDisabled || captchaPayload) return true;
 		return await solveCaptchaChallenge();
 	}
 
 	async function submit(enteredCode: string) {
 		if (phase !== 'entering') return;
+		phase = 'connecting';
 
 		if (!(await ensureCaptcha())) {
 			showError($_('captchaFailed'));
@@ -88,9 +105,10 @@
 		}
 
 		code = enteredCode;
-		phase = 'connecting';
 
 		const result = await registerQuickConnectReceiver(code, captchaPayload);
+		captchaPayload = null;
+		onCaptchaUsed();
 		if (result.status !== 'ok') {
 			if (result.status === 'not-found' || result.status === 'error') {
 				showError($_('quickConnect.invalidCode'));

@@ -1,8 +1,18 @@
-import { getVideoYTjs, getVideoPageYTjs, continueVideoPlayerYTjs } from '$lib/api/youtubejs/video';
+import {
+	addPlaylistVideoBackend,
+	deletePersonalPlaylistBackend,
+	getPersonalPlaylistsBackend,
+	getPlaylistBackend,
+	isMaterialiousPlaylist,
+	postPersonalPlaylistBackend,
+	removePlaylistVideoBackend
+} from './backend/playlist';
+import { getVideoYTjs, getVideoPageYTjs, continueVideoPlayerYTjs } from '#lib/api/youtubejs/video';
 import { get } from 'svelte/store';
 import {
 	invidiousAuthStore,
 	personalPlaylistsCacheStore,
+	playlistCacheStore,
 	playerYouTubeJsAlways,
 	watchHistoryEnabledStore
 } from '../store';
@@ -25,7 +35,7 @@ import type {
 } from './model';
 import { commentsSetDefaults, searchSetDefaults, useEngineFallback } from './misc';
 import { getSearchYTjs } from './youtubejs/search';
-import { isMaterialiousAccountActive, isUnrestrictedPlatform, isYTBackend } from '$lib/backend';
+import { isMaterialiousAccountActive, isUnrestrictedPlatform, isYTBackend } from '#lib/backend';
 import { getSearchSuggestionsYTjs } from './youtubejs/searchSuggestions';
 import { getResolveUrlYTjs } from './youtubejs/misc';
 import { getCommentsYTjs } from './youtubejs/comments';
@@ -51,7 +61,7 @@ import {
 	isCompanionAvailable,
 	startCompanionDownload
 } from './invidious/download';
-import { isOwnBackend } from '$lib/shared';
+import { isOwnBackend } from '#lib/shared/index';
 import {
 	amSubscribedBackend,
 	deleteUnsubscribeBackend,
@@ -93,9 +103,9 @@ import {
 	saveWatchHistoryBackend,
 	updateWatchHistoryBackend
 } from './backend/history';
-import { localDb } from '$lib/dexie';
-import { getBestThumbnail } from '$lib/images';
-import type { ThumbnailVideo } from '$lib/thumbnail';
+import { localDb } from '#lib/dexie';
+import { getBestThumbnail } from '#lib/images';
+import type { ThumbnailVideo } from '#lib/thumbnail';
 import { backendFetch } from './backend/request';
 
 export async function getPopular(fetchOptions?: RequestInit): Promise<Video[]> {
@@ -438,6 +448,7 @@ export async function getPlaylist(
 	page: number = 1,
 	fetchOptions: RequestInit = {}
 ): Promise<PlaylistPage> {
+	if (isMaterialiousPlaylist(playlistId)) return getPlaylistBackend(playlistId, page, fetchOptions);
 	if (isYTBackend() || useEngineFallback('Playlist')) {
 		return await getPlaylistYTjs(playlistId);
 	}
@@ -445,48 +456,67 @@ export async function getPlaylist(
 	return getPlaylistInvidious(playlistId, page, fetchOptions);
 }
 
+let personalPlaylistVersion = 0;
+
 export function invalidatePersonalPlaylists() {
+	personalPlaylistVersion++;
 	personalPlaylistsCacheStore.set(null);
+	playlistCacheStore.set({});
 }
 
 export async function ensurePersonalPlaylists(): Promise<void> {
 	if (get(personalPlaylistsCacheStore)) return;
-	if (!get(invidiousAuthStore) || isYTBackend()) return;
+	if (!isMaterialiousAccountActive() && (!get(invidiousAuthStore) || isYTBackend())) return;
 	try {
-		personalPlaylistsCacheStore.set(await getPersonalPlaylists({ priority: 'low' }));
+		await getPersonalPlaylists({ priority: 'low' });
 	} catch {
-		personalPlaylistsCacheStore.set([]);
+		// Leave the cache empty so a later interaction can retry.
 	}
 }
 
 export async function getPersonalPlaylists(
 	fetchOptions: RequestInit = {}
 ): Promise<PlaylistPage[]> {
-	if (isYTBackend()) return [];
-
 	const cached = get(personalPlaylistsCacheStore);
 	if (cached) return cached;
 
-	const playlists = await getPersonalPlaylistsInvidious(fetchOptions);
+	const version = personalPlaylistVersion;
+	const requests: Promise<PlaylistPage[]>[] = [];
+	if (isMaterialiousAccountActive()) requests.push(getPersonalPlaylistsBackend(fetchOptions));
+	if (get(invidiousAuthStore) && !isYTBackend()) {
+		requests.push(getPersonalPlaylistsInvidious(fetchOptions));
+	}
+	const results = await Promise.allSettled(requests);
+	if (version !== personalPlaylistVersion) throw new Error('Playlist account changed');
+	const successful = results.filter((result) => result.status === 'fulfilled');
+	if (requests.length && !successful.length) {
+		const failure = results.find((result) => result.status === 'rejected');
+		throw failure?.reason;
+	}
+	const playlists = successful.flatMap((result) => result.value);
 	personalPlaylistsCacheStore.set(playlists);
 	return playlists;
 }
 
 export async function deletePersonalPlaylist(playlistId: string) {
-	if (isYTBackend()) return;
-
-	await deletePersonalPlaylistInvidious(playlistId);
+	if (isMaterialiousPlaylist(playlistId)) await deletePersonalPlaylistBackend(playlistId);
+	else await deletePersonalPlaylistInvidious(playlistId);
 	invalidatePersonalPlaylists();
 }
 
 export async function postPersonalPlaylist(
 	title: string,
 	privacy: 'public' | 'private' | 'unlisted',
-	fetchOptions: RequestInit = {}
+	fetchOptions: RequestInit = {},
+	provider: 'invidious' | 'materialious' = 'invidious'
 ) {
-	if (isYTBackend()) return;
-	await postPersonalPlaylistInvidious(title, privacy, fetchOptions);
+	let playlistId: string;
+	if (provider === 'materialious') {
+		if (privacy !== 'private') throw new Error('Materialious playlists are private');
+		playlistId = await postPersonalPlaylistBackend(title, fetchOptions);
+	} else playlistId = await postPersonalPlaylistInvidious(title, privacy, fetchOptions);
 	invalidatePersonalPlaylists();
+	return playlistId;
 }
 
 export async function addPlaylistVideo(
@@ -494,8 +524,23 @@ export async function addPlaylistVideo(
 	videoId: string,
 	fetchOptions: RequestInit = {}
 ) {
-	if (isYTBackend()) return;
-	await addPlaylistVideoInvidious(playlistId, videoId, fetchOptions);
+	if (isMaterialiousPlaylist(playlistId)) {
+		const video = await getVideo(videoId, false, fetchOptions);
+		await addPlaylistVideoBackend(
+			playlistId,
+			{
+				type: 'video',
+				videoId,
+				title: video.title,
+				author: video.author,
+				authorId: video.authorId,
+				lengthSeconds: video.lengthSeconds,
+				videoThumbnails: video.videoThumbnails,
+				viewCount: video.viewCount
+			},
+			fetchOptions
+		);
+	} else await addPlaylistVideoInvidious(playlistId, videoId, fetchOptions);
 	invalidatePersonalPlaylists();
 }
 
@@ -504,9 +549,9 @@ export async function removePlaylistVideo(
 	indexId: string,
 	fetchOptions: RequestInit = {}
 ) {
-	if (isYTBackend()) return;
-
-	await removePlaylistVideoInvidious(playlistId, indexId, fetchOptions);
+	if (isMaterialiousPlaylist(playlistId))
+		await removePlaylistVideoBackend(playlistId, indexId, fetchOptions);
+	else await removePlaylistVideoInvidious(playlistId, indexId, fetchOptions);
 	invalidatePersonalPlaylists();
 }
 
@@ -537,7 +582,7 @@ export async function getDownloadFormats(video: VideoPlay): Promise<AvailableFor
 }
 
 export function isDownloadSupported(): boolean {
-	return isElectron() || isOwnBackend() !== null || isCompanionAvailable();
+	return isElectron() || (isOwnBackend() !== null && !isYTBackend()) || isCompanionAvailable();
 }
 
 export async function startDownload(

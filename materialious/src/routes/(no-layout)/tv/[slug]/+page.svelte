@@ -1,23 +1,23 @@
 <script lang="ts">
-	import ContentColumn from '$lib/components/layout/ContentColumn.svelte';
-	import Player from '$lib/components/player/Player.svelte';
-	import Author from '$lib/components/Author.svelte';
-	import Description from '$lib/components/watch/Description.svelte';
-	import LikesDislikes from '$lib/components/watch/LikesDislikes.svelte';
-	import { letterCase } from '$lib/letterCasing';
+	import ContentColumn from '#lib/components/layout/ContentColumn.svelte';
+	import Player from '#lib/components/player/Player.svelte';
+	import Author from '#lib/components/Author.svelte';
+	import Description from '#lib/components/watch/Description.svelte';
+	import LikesDislikes from '#lib/components/watch/LikesDislikes.svelte';
+	import { letterCase } from '#lib/letterCasing';
 	import Mousetrap from 'mousetrap';
 	import { onDestroy, onMount, tick } from 'svelte';
-	import { _ } from '$lib/i18n';
-	import { playlistCacheStore } from '$lib/store';
+	import { _ } from '#lib/i18n';
+	import { playlistCacheStore } from '#lib/store';
 	import { fade } from 'svelte/transition';
-	import ItemsList from '$lib/components/layout/ItemsList.svelte';
-	import { addBackHandler } from '$lib/backHandlers';
-	import TvPlaybackSettings from '$lib/components/player/settings/TvPlaybackSettings.svelte';
-	import displayMode from '$lib/android/plugins/displayMode';
-	import { playerMatchFrameRateStore } from '$lib/stores/player';
+	import ItemsList from '#lib/components/layout/ItemsList.svelte';
+	import { addBackHandler } from '#lib/backHandlers';
+	import TvPlaybackSettings from '#lib/components/player/settings/TvPlaybackSettings.svelte';
+	import displayMode from '#lib/android/plugins/displayMode';
+	import { playerMatchFrameRateStore } from '#lib/stores/player';
 	import type shaka from 'shaka-player/dist/shaka-player.ui';
 	import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
-	import bixRemote, { reportRemoteState, type RemoteCommand } from '$lib/android/plugins/bixRemote';
+	import bixRemote, { reportRemoteState, type RemoteCommand } from '#lib/android/plugins/bixRemote';
 	import {
 		activeVideoTrack,
 		chooseAutoQuality,
@@ -26,7 +26,7 @@
 		isAutoQuality,
 		qualityHeights,
 		tvRates
-	} from '$lib/player/tvPlayback';
+	} from '#lib/player/tvPlayback';
 
 	let { data } = $props();
 

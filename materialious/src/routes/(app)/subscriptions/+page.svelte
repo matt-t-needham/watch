@@ -1,18 +1,21 @@
 <script lang="ts">
-	import { getFeed } from '$lib/api/index';
-	import type { PlaylistPageVideo, Video, VideoBase } from '$lib/api/model';
-	import { feedCacheStore, feedLoadingStore } from '$lib/store';
-	import InfiniteLoading, { type InfiniteEvent } from 'svelte-infinite-loading';
-	import ItemsList from '$lib/components/layout/ItemsList.svelte';
+	import { getFeed } from '#lib/api/index';
+	import type { PlaylistPageVideo, Video, VideoBase } from '#lib/api/model';
+	import { feedCacheStore, feedLoadingStore } from '#lib/store';
+	import InfiniteLoading, { type InfiniteEvent } from '#lib/components/InfiniteLoading.svelte';
+	import ItemsList from '#lib/components/layout/ItemsList.svelte';
 	import { resolve } from '$app/paths';
 	import { invalidateAll } from '$app/navigation';
 	import { onMount } from 'svelte';
-	import { _ } from '$lib/i18n';
-	import PageLoading from '$lib/components/PageLoading.svelte';
-	import { isYTBackend } from '$lib/backend';
-	import { refreshFeedYTjs, type FeedRefreshResult } from '$lib/api/youtubejs/subscriptions';
+	import { get } from 'svelte/store';
+	import { _ } from '#lib/i18n';
+	import PageLoading from '#lib/components/PageLoading.svelte';
+	import { isYTBackend } from '#lib/backend';
+	import { refreshFeedYTjs, type FeedRefreshResult } from '#lib/api/youtubejs/subscriptions';
+	import { isAndroidTv } from '#lib/utils';
 
 	let currentPage = 1;
+	let multipleActions = $state(false);
 	let videos: (VideoBase | Video | PlaylistPageVideo)[] = $derived($feedCacheStore.subscription);
 
 	// bix: the feed is built on this device. Refresh waits for every channel
@@ -74,13 +77,23 @@
 			event.detail.complete();
 		} else {
 			videos = [...videos, ...feed.videos, ...feed.notifications];
-			feedCacheStore.set({ subscription: videos });
+			feedCacheStore.set({ ...get(feedCacheStore), subscription: videos });
 			event.detail.loaded();
 		}
 	}
 </script>
 
 <nav class="right-align">
+	{#if !isAndroidTv() && (videos?.length ?? 0) > 0}
+		<button
+			class="button surface-container-highest"
+			aria-label="Bulk actions"
+			aria-pressed={multipleActions}
+			onclick={() => (multipleActions = !multipleActions)}
+		>
+			<i>checklist</i><span class="m l">Bulk actions</span>
+		</button>
+	{/if}
 	{#if isYTBackend()}
 		<span class="refresh-status" class:error-text={refreshFailed} role="status">
 			{refreshStatus}
@@ -90,14 +103,14 @@
 			<span>{$_('subscriptions.refresh')}</span>
 		</button>
 	{/if}
-	<a class="button surface-container-highest" href={resolve('/subscriptions/manage', {})}>
+	<a class="button surface-container-highest" href={resolve('/(app)/subscriptions/manage')}>
 		{$_('subscriptions.manageSubscriptions')}
 	</a>
 </nav>
 <div class="space"></div>
 
 {#if !$feedLoadingStore}
-	<ItemsList items={videos ?? []} />
+	<ItemsList items={videos ?? []} bind:multipleActions showActionButton={false} />
 	<InfiniteLoading on:infinite={loadMore} />
 {:else}
 	<PageLoading />

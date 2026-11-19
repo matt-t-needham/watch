@@ -1,33 +1,30 @@
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import { resolve } from '$app/paths';
+import { resolvePath } from '#lib/paths';
 import { redirect } from '@sveltejs/kit';
-import { getResolveUrl } from '$lib/api';
-import { resolvePlatform } from '$lib/platform';
-import '$lib/i18n';
-import { initI18n } from '$lib/i18n';
-import { getPages } from '$lib/navPages';
+import { getResolveUrl } from '#lib/api/index';
+import { resolvePlatform } from '#lib/platform';
+import '#lib/i18n/index.js';
+import { initI18n } from '#lib/i18n/index';
+import { getPages } from '#lib/navPages';
 import {
 	invidiousAuthStore,
-	backendInUseStore,
 	invidiousInstanceStore,
 	interfaceDefaultPage,
-	authTokenStore,
 	materialiousBackendStore,
 	rawMasterKeyStore,
 	filterContentListStore,
 	filterContentUrlStore,
-	filterContentUrlAutoUpdateStore
-} from '$lib/store';
-import { get, type Writable } from 'svelte/store';
-import { Capacitor } from '@capacitor/core';
-import { Preferences } from '@capacitor/preferences';
-import { deserialize } from '@macfja/serializer';
-import { isYTBackend } from '$lib/backend';
-import { isOwnBackend } from '$lib/shared/index';
-import '$lib/fetchProxy';
-import { loadContentFilterFromURL } from '$lib/filtering/index.js';
-import { configBackend } from '$lib/api/backend';
-import { configBackendCache } from '$lib/stores/backend.js';
+	filterContentUrlAutoUpdateStore,
+	hydrateSettings
+} from '#lib/store';
+import { get } from 'svelte/store';
+import { isYTBackend } from '#lib/backend';
+import { isOwnBackend } from '#lib/shared/index';
+import '#lib/fetchProxy.js';
+import { loadContentFilterFromURL } from '#lib/filtering/index';
+import { configBackend } from '#lib/api/backend/index';
+import { configBackendCache } from '#lib/stores/backend';
 
 export const ssr = false;
 export const prerender = false;
@@ -37,28 +34,11 @@ export async function load({ url }) {
 		await initI18n();
 	}
 
+	// Persisted stores hydrate asynchronously on Android. Wait for them before
+	// making routing decisions that depend on the saved settings.
+	await hydrateSettings();
+
 	await resolvePlatform();
-
-	if (Capacitor.getPlatform() === 'android') {
-		const preferenceKey: Record<string, Writable<any>> = {
-			invidiousInstance: invidiousInstanceStore,
-			authToken: invidiousAuthStore,
-			backendInUse: backendInUseStore,
-			rawMasterKey: rawMasterKeyStore,
-			materialiousBackend: materialiousBackendStore,
-			materialiousAuthToken: authTokenStore,
-			filterContentList: filterContentListStore,
-			filterContentUrl: filterContentUrlStore,
-			filterContentUrlAutoUpdate: filterContentUrlAutoUpdateStore
-		};
-
-		for (const [key, store] of Object.entries(preferenceKey)) {
-			const result = await Preferences.get({ key });
-			if (result.value !== null) {
-				store.set(deserialize(result.value));
-			}
-		}
-	}
 
 	if (get(materialiousBackendStore)) {
 		const config = await configBackend();
@@ -80,7 +60,7 @@ export async function load({ url }) {
 		}
 	}
 
-	const resolvedRoot = resolve('/', {});
+	const resolvedRoot = resolve('/(app)');
 
 	if (url.pathname.startsWith(resolvedRoot + '@')) {
 		const username = url.pathname.substring(resolvedRoot.length).split('/')[0];
@@ -90,8 +70,8 @@ export async function load({ url }) {
 			if (resolvedUrl.pageType === 'WEB_PAGE_TYPE_CHANNEL') {
 				throw redirect(
 					302,
-					resolve(`/channel/[authorId]`, {
-						authorId: resolvedUrl.ucid
+					resolve('/(app)/channel/[slug]', {
+						slug: resolvedUrl.ucid
 					})
 				);
 			}
@@ -111,22 +91,24 @@ export async function load({ url }) {
 	) {
 		for (const page of getPages()) {
 			if (page.href === defaultPage && (!page.requiresAuth || get(invidiousAuthStore))) {
-				throw redirect(302, resolve(defaultPage, {}));
+				throw redirect(302, resolvePath(defaultPage));
 			}
 		}
 	}
 
 	const isLoginPage =
-		url.pathname.endsWith('/login/internal') || url.pathname.endsWith('/login/tv');
+		url.pathname.endsWith('/login/internal') ||
+		url.pathname.endsWith('/login/invidious') ||
+		url.pathname.endsWith('/login/invidious/callback');
 	const isSetupPage = url.pathname.endsWith('/setup');
 
 	if (!isLoginPage) {
 		if (isOwnBackend()?.requireAuth && !get(rawMasterKeyStore)) {
-			throw redirect(302, resolve('/login/internal', {}));
+			throw redirect(302, resolve('/(app)/login/internal'));
 		}
 
 		if (!get(invidiousInstanceStore) && !isYTBackend() && !isSetupPage) {
-			throw redirect(302, resolve('/setup', {}));
+			throw redirect(302, resolve('/(app)/setup'));
 		}
 	}
 

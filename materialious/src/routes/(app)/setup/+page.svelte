@@ -1,188 +1,450 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { onMount, tick } from 'svelte';
+	import { getNextFocus } from '@bbc/tv-lrud-spatial';
+	import { isAndroidTv, keyCodeMap } from '#lib/utils';
 	import { resolve } from '$app/paths';
-	import Question from '$lib/components/Question.svelte';
-	import { _ } from '$lib/i18n';
-	import { isUnrestrictedPlatform, getMaterialiousBackendUrl, remoteMaterialiousSupported } from '$lib/backend';
-	import { setInvidiousInstance, setMaterialiousBackend, clearCaches } from '$lib/auth';
-	import { isOwnBackend } from '$lib/shared';
-	import { backendInUseStore, invidiousInstanceStore, playerYouTubeJsFallback } from '$lib/store';
+	import { _ } from '#lib/i18n/index';
+	import {
+		isUnrestrictedPlatform,
+		getMaterialiousBackendUrl,
+		remoteMaterialiousSupported
+	} from '#lib/backend';
+	import { setInvidiousInstance, setMaterialiousBackend, clearCaches } from '#lib/auth';
+	import { isOwnBackend } from '#lib/shared/index';
+	import { backendInUseStore, invidiousInstanceStore, playerYouTubeJsFallback } from '#lib/store';
+	import AllowInsecureRequests from '#lib/components/AllowInsecureRequests.svelte';
 
 	const defaultInstance = !isOwnBackend()
 		? 'https://invidious.materialio.us'
 		: $invidiousInstanceStore;
 
-	let usingInvidious: boolean = $state(false);
+	let step = $state(0);
+	let usingInvidious: boolean | undefined = $state(undefined);
 	let invidiousInstanceValid: boolean = $state(true);
 	let invidiousInstance: string = $state(defaultInstance ?? '');
-
 	let materialiousBackend: string = $state(getMaterialiousBackendUrl());
 	let invalidMaterialiousBackend: boolean = $state(false);
+	let saving = $state(false);
+	let editingInput: HTMLInputElement | null = $state(null);
+
+	const stepNames = ['Backend', 'Player', 'Connections'];
+	let setupPage: HTMLElement;
+
+	function keepEditingInputVisible() {
+		if (!editingInput || document.activeElement !== editingInput || !setupPage) return;
+		const visibleTop = Math.max(
+			setupPage.getBoundingClientRect().top,
+			window.visualViewport?.offsetTop ?? 0
+		);
+		setupPage.scrollTop += editingInput.getBoundingClientRect().top - visibleTop - 24;
+	}
+
+	function editInput(input: HTMLInputElement) {
+		input.readOnly = false;
+		editingInput = input;
+		input.focus();
+		void tick().then(keepEditingInputVisible);
+	}
+
+	onMount(() => {
+		if (!isAndroidTv()) return;
+		window.addEventListener('resize', keepEditingInputVisible);
+		window.visualViewport?.addEventListener('resize', keepEditingInputVisible);
+		window.visualViewport?.addEventListener('scroll', keepEditingInputVisible);
+		return () => {
+			window.removeEventListener('resize', keepEditingInputVisible);
+			window.visualViewport?.removeEventListener('resize', keepEditingInputVisible);
+			window.visualViewport?.removeEventListener('scroll', keepEditingInputVisible);
+		};
+	});
+
+	$effect(() => {
+		void step;
+		if (!isAndroidTv()) return;
+		let cancelled = false;
+		void tick().then(() => {
+			if (cancelled) return;
+			const target = setupPage?.querySelector<HTMLElement>(
+				'.step-content input, .step-content button, .setup-card a'
+			);
+			if (target instanceof HTMLInputElement) target.readOnly = true;
+			target?.focus();
+			target?.scrollIntoView({ block: 'nearest' });
+		});
+		return () => {
+			cancelled = true;
+		};
+	});
+
+	function handleKeyDown(event: KeyboardEvent) {
+		if (!isAndroidTv()) return;
+		const target = event.target as HTMLElement;
+		if (target instanceof HTMLInputElement) {
+			if (event.key === 'Enter' && target.readOnly) {
+				event.preventDefault();
+				editInput(target);
+				return;
+			}
+			if (!target.readOnly) return;
+		}
+		const code = keyCodeMap[event.key];
+		if (![37, 38, 39, 40].includes(code)) return;
+		event.preventDefault();
+		const next = getNextFocus(target, code, setupPage);
+		if (next instanceof HTMLInputElement) next.readOnly = true;
+		next?.focus();
+		next?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+	}
+
+	function handleFocusOut(event: FocusEvent) {
+		if (isAndroidTv() && event.target instanceof HTMLInputElement) {
+			event.target.readOnly = true;
+			if (editingInput === event.target) editingInput = null;
+		}
+	}
+
+	function handleClick(event: MouseEvent) {
+		if (isAndroidTv() && event.target instanceof HTMLInputElement && event.target.readOnly) {
+			editInput(event.target);
+		}
+	}
 
 	async function setupCompleted() {
 		clearCaches();
-		goto(resolve('/', {}), { replaceState: true });
+		goto(resolve('/(app)'), { replace: true });
 	}
 
-	async function setInvidious(event: Event) {
-		event.preventDefault();
-
-		invidiousInstanceValid = await setInvidiousInstance(invidiousInstance);
-
-		if (!invidiousInstanceValid) {
-			return;
+	async function chooseBackend(invidious: boolean) {
+		usingInvidious = invidious;
+		if (invidious) {
+			backendInUseStore.set('ivg');
+			step = 1;
+		} else {
+			backendInUseStore.set('yt');
+			if (remoteMaterialiousSupported()) {
+				step = 2;
+			} else {
+				await setupCompleted();
+			}
 		}
-
-		setupCompleted();
 	}
 
-	function setYTBackend() {
-		usingInvidious = false;
-		backendInUseStore.set('yt');
-		setupCompleted();
-	}
-
-	async function setMaterialiousInstance(event: Event) {
+	async function saveConnections(event: SubmitEvent) {
 		event.preventDefault();
-		invalidMaterialiousBackend = !(await setMaterialiousBackend(materialiousBackend));
+		saving = true;
+		invidiousInstanceValid = true;
+		invalidMaterialiousBackend = false;
 
-		if (invalidMaterialiousBackend) return;
+		try {
+			if (usingInvidious) {
+				if (!invidiousInstance.trim()) {
+					invidiousInstanceValid = false;
+					return;
+				}
+				invidiousInstanceValid = await setInvidiousInstance(invidiousInstance.trim());
+				if (!invidiousInstanceValid) return;
+			}
 
-		setupCompleted();
+			if (remoteMaterialiousSupported() && materialiousBackend.trim()) {
+				invalidMaterialiousBackend = !(await setMaterialiousBackend(materialiousBackend.trim()));
+				if (invalidMaterialiousBackend) return;
+			}
+
+			await setupCompleted();
+		} finally {
+			saving = false;
+		}
 	}
 </script>
 
-<nav class="center-align">
-	<div class="setup">
-		{#if !isUnrestrictedPlatform()}
-			<p>
-				<code>VITE_DEFAULT_INVIDIOUS_INSTANCE</code> has not been provided.
-			</p>
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<div
+	class="setup-page"
+	class:editing={editingInput !== null}
+	role="group"
+	aria-label="Setup"
+	bind:this={setupPage}
+	onkeydown={handleKeyDown}
+	onfocusout={handleFocusOut}
+	onclick={handleClick}
+>
+	{#if !isUnrestrictedPlatform()}
+		<section class="setup-card surface-container">
+			<p><code>VITE_DEFAULT_INVIDIOUS_INSTANCE</code> has not been provided.</p>
 			<p>
 				Please read our <a
 					href="https://github.com/Materialious/Materialious/blob/main/docs/DOCKER.md"
 					referrerpolicy="no-referrer"
-					class="link"
+					class="link">Docker guide</a
 				>
-					Docker guide
-				</a>
-				for configuring Materialious as a Invidious frontend.
+				for configuring Materialious as an Invidious frontend.
 			</p>
-			<p>
-				You will be required to reverse proxy Invidious & configure CORS too for Materialious to
-				work.
-			</p>
-		{:else}
-			<Question
-				question={$_('initalSetup.useInvidious')}
-				answers={[
-					{
-						text: $_('initalSetup.yes'),
-						action: () => {
-							usingInvidious = true;
-						}
-					},
-					{
-						text: $_('initalSetup.no'),
-						action: setYTBackend
-					},
-					{
-						text: $_('initalSetup.unsure'),
-						action: setYTBackend
-					}
-				]}
-				info={$_('initalSetup.invidiousInfo')}
-			/>
+			<p>You will need to reverse proxy Invidious and configure CORS for Materialious to work.</p>
+		</section>
+	{:else}
+		<section class="setup-card surface-container">
+			<header>
+				<p class="eyebrow">Welcome to Materialious</p>
+				<h1>Let’s get you set up</h1>
+				<p class="muted">Choose how you want to watch. You can change these settings later.</p>
+			</header>
 
-			{#if usingInvidious}
-				<div class="space"></div>
-
-				<Question
-					question={$_('initalSetup.useLocalFallback')}
-					answers={[
-						{
-							text: $_('initalSetup.yes'),
-							action: () => {
-								playerYouTubeJsFallback.set(true);
-							}
-						},
-						{
-							text: $_('initalSetup.no'),
-							action: () => {
-								playerYouTubeJsFallback.set(false);
-							}
-						},
-						{
-							text: $_('initalSetup.unsure'),
-							action: () => {
-								playerYouTubeJsFallback.set(true);
-							}
-						}
-					]}
-					info={$_('initalSetup.localFallbackInfo')}
-				/>
-
-				<div class="space"></div>
-				<h3>{$_('initalSetup.configureInstance')}</h3>
-				<form onsubmit={setInvidious}>
-					<nav class="center-align">
-						<div
-							class="field label prefix surface-container-highest"
-							class:invalid={!invidiousInstanceValid && invidiousInstance !== ''}
+			<nav class="stepper" aria-label="Setup progress">
+				{#each stepNames as name, index (name)}
+					<div
+						class="center-align step-item"
+						class:active={step === index}
+						class:complete={step > index}
+					>
+						<button
+							class="circle small step-circle"
+							disabled={step < index || (index === 1 && usingInvidious === false)}
+							onclick={() => (step = index)}
 						>
-							<i>link</i>
-							<input bind:value={invidiousInstance} name="instanceUrl" type="text" tabindex="0" />
-							<label for="instanceUrl" tabindex="-1">{$_('layout.instanceUrl')}</label>
-						</div>
-
-						<button type="submit">
-							<i>done_all</i>
+							{#if step > index}<i>done</i>{:else}{index + 1}{/if}
 						</button>
-					</nav>
-				</form>
+						<div class="small-margin">{name}</div>
+					</div>
+					{#if index < stepNames.length - 1}<hr class="max" />{/if}
+				{/each}
+			</nav>
 
-				{#if remoteMaterialiousSupported()}
+			{#if step === 0}
+				<div class="step-content">
+					<h2>{$_('initalSetup.useInvidious')}</h2>
+					<p class="muted">{$_('initalSetup.invidiousInfo')}</p>
+					<div class="choices">
+						<button class="choice surface-container-highest" onclick={() => chooseBackend(true)}>
+							<strong>{$_('initalSetup.yes')}</strong><span>Use an Invidious instance</span>
+						</button>
+						<button class="choice surface-container-highest" onclick={() => chooseBackend(false)}>
+							<strong>{$_('initalSetup.no')}</strong><span>Use YouTube directly</span>
+						</button>
+						<button class="choice surface-container-highest" onclick={() => chooseBackend(false)}>
+							<strong>{$_('initalSetup.unsure')}</strong><span>You can change this later</span>
+						</button>
+					</div>
+				</div>
+			{:else if step === 1}
+				<div class="step-content">
+					<h2>{$_('initalSetup.useLocalFallback')}</h2>
+					<p class="muted">{$_('initalSetup.localFallbackInfo')}</p>
+					<div class="choices two">
+						<button
+							class="choice surface-container-highest"
+							onclick={() => {
+								playerYouTubeJsFallback.set(true);
+								step = 2;
+							}}><strong>{$_('initalSetup.yes')}</strong></button
+						>
+						<button
+							class="choice surface-container-highest"
+							onclick={() => {
+								playerYouTubeJsFallback.set(false);
+								step = 2;
+							}}><strong>{$_('initalSetup.no')}</strong></button
+						>
+					</div>
 					<div class="space"></div>
-					<h3>{$_('materialiousBackendUrl')}</h3>
-					<form onsubmit={setMaterialiousInstance}>
-						<nav class="center-align">
+					<button class="surface-container-highest" onclick={() => (step = 0)}>Back</button>
+				</div>
+			{:else}
+				<div class="step-content">
+					<h2>Connect your services</h2>
+					<p class="muted">
+						{usingInvidious
+							? 'An Invidious instance is required. The Materialious backend is optional.'
+							: 'The Materialious backend is optional.'}
+					</p>
+					<form onsubmit={saveConnections}>
+						{#if usingInvidious}
+							<div
+								class="field label prefix surface-container-highest"
+								class:invalid={!invidiousInstanceValid}
+							>
+								<i>link</i><input
+									bind:value={invidiousInstance}
+									id="instanceUrl"
+									name="instanceUrl"
+									type="url"
+									required
+								/>
+								<label for="instanceUrl">{$_('invidiousInstance')}</label>
+							</div>
+						{/if}
+						{#if remoteMaterialiousSupported()}
 							<div
 								class="field label prefix surface-container-highest"
 								class:invalid={invalidMaterialiousBackend}
 							>
-								<i>link</i>
-								<input
+								<i>link</i><input
 									bind:value={materialiousBackend}
+									id="materialiousBackendUrl"
 									name="materialiousBackendUrl"
-									type="text"
-									tabindex="0"
+									type="url"
 								/>
-								<label for="materialiousBackendUrl" tabindex="-1"
-									>{$_('materialiousBackendUrl')}</label
+								<label for="materialiousBackendUrl">{$_('materialiousBackendUrl')} (Optional)</label
 								>
 							</div>
-
-							<button type="submit">
-								<i>done_all</i>
-							</button>
-						</nav>
+						{/if}
+						<AllowInsecureRequests show={!invidiousInstanceValid || invalidMaterialiousBackend} />
+						<div class="actions">
+							<button
+								type="button"
+								class="surface-container-highest"
+								onclick={() => (step = usingInvidious ? 1 : 0)}>Back</button
+							>
+							<button type="submit" class="primary" disabled={saving}
+								>{saving ? 'Connecting…' : 'Finish setup'}<i>arrow_forward</i></button
+							>
+						</div>
 					</form>
-				{/if}
+				</div>
 			{/if}
-		{/if}
-	</div>
-</nav>
-
-<div style="margin-bottom: 20rem;"></div>
+		</section>
+	{/if}
+</div>
 
 <style>
-	.setup {
-		width: 600px;
+	.setup-page {
+		height: 100%;
+		box-sizing: border-box;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		display: flex;
+		padding: 2rem 1rem;
 	}
-
-	@media screen and (max-width: 600px) {
-		.setup {
-			width: 100%;
+	.setup-page.editing {
+		/* Leave room to move either connection field above the TV keyboard. */
+		padding-bottom: 65vh;
+	}
+	.setup-card {
+		width: min(100%, 680px);
+		margin: auto;
+		flex-shrink: 0;
+		box-sizing: border-box;
+		padding: clamp(1.25rem, 4vw, 2.5rem);
+		border-radius: 1.5rem;
+	}
+	header {
+		text-align: center;
+	}
+	h1 {
+		margin: 0.25rem 0;
+		font-size: clamp(1.7rem, 4vw, 2.3rem);
+	}
+	.eyebrow {
+		color: var(--primary);
+		font-weight: 700;
+		margin: 0;
+	}
+	.muted {
+		opacity: 0.72;
+	}
+	.stepper {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+		margin: 2rem 0;
+	}
+	.stepper hr {
+		flex: 1;
+		margin-top: 1rem;
+	}
+	.step-item {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		min-width: 4.5rem;
+		white-space: nowrap;
+		opacity: 0.55;
+		font-size: 0.9rem;
+	}
+	.step-item.active,
+	.step-item.complete {
+		opacity: 1;
+	}
+	.step-circle {
+		flex: none;
+	}
+	.step-item.active .step-circle,
+	.step-item.complete .step-circle {
+		background-color: var(--primary);
+		color: var(--on-primary);
+	}
+	.step-content h2 {
+		margin-bottom: 0.25rem;
+	}
+	.choices {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 0.75rem;
+		margin-top: 1.5rem;
+	}
+	.choices.two {
+		grid-template-columns: repeat(2, 1fr);
+	}
+	.choice {
+		min-height: 8rem;
+		padding: 1rem;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		justify-content: center;
+		gap: 0.5rem;
+		text-align: left;
+		border-radius: 1rem;
+	}
+	.choice:hover,
+	.setup-page :global(button:focus-visible),
+	.setup-page :global(input:focus-visible),
+	.setup-page :global(a:focus-visible) {
+		outline: 2px solid var(--primary);
+	}
+	.choice span {
+		opacity: 0.7;
+		font-size: 0.88rem;
+	}
+	.field {
+		width: 100%;
+	}
+	.actions {
+		display: flex;
+		justify-content: space-between;
+		margin-top: 1.5rem;
+	}
+	.actions button {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	@media (max-width: 560px) {
+		.setup-page {
+			display: block;
+			height: 100%;
+			min-height: 0;
+			overflow-y: auto;
+			overscroll-behavior: contain;
+		}
+		.setup-card {
+			margin: 1rem auto;
+		}
+		.step-item {
+			font-size: 0.75rem;
+			gap: 0.3rem;
+		}
+		.stepper {
+			gap: 0.35rem;
+		}
+		.choices {
+			grid-template-columns: 1fr;
+		}
+		.choices.two {
+			grid-template-columns: 1fr;
+		}
+		.choice {
+			min-height: 5rem;
 		}
 	}
 </style>

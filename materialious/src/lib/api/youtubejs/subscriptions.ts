@@ -1,6 +1,6 @@
-import { localDb, type ChannelSubscriptions } from '$lib/dexie';
-import { cleanNumber } from '$lib/numbers';
-import { relativeTimestamp } from '$lib/time';
+import { localDb, type ChannelSubscriptions } from '#lib/dexie';
+import { cleanNumber } from '#lib/numbers';
+import { relativeTimestamp } from '#lib/time';
 import { get } from 'svelte/store';
 import type { Feed, Subscription, Thumbnail, Video } from '../model';
 import { getChannelContentYTjs, getChannelYTjs } from './channel';
@@ -9,7 +9,7 @@ import {
 	engineCullYTStore,
 	engineMaxConcurrentChannelsStore,
 	rawMasterKeyStore
-} from '$lib/store';
+} from '#lib/store';
 import { getSubscriptionsBackend } from '../backend/subscriptions';
 
 let refreshPromise: Promise<FeedRefreshResult> | null = null;
@@ -145,6 +145,10 @@ async function getVideosTabLengths(channelId: string): Promise<Map<string, numbe
  *
  * Throws when either fetch fails, so the caller can report the channel.
  */
+// bix: upstream's backend subscribe flow calls this to clear a cancel flag. Our feed has
+// no cancel state (unsubscribing deletes the channel row), so there is nothing to clear.
+export function resumeChannelRSS(_channelId: string): void {}
+
 export async function parseChannelRSS(channelId: string): Promise<number> {
 	const feedUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
 

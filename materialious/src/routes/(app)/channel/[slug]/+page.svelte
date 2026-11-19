@@ -1,18 +1,18 @@
 <script lang="ts">
-	import { getChannelContent, searchChannelContent } from '$lib/api';
-	import type { ChannelContent, ChannelContentTypes, ChannelSortBy } from '$lib/api/model';
-	import PageLoading from '$lib/components/PageLoading.svelte';
-	import { proxyGoogleImage } from '$lib/images';
-	import { cleanNumber } from '$lib/numbers';
-	import { channelCacheStore } from '$lib/store';
-	import { isAndroidTv } from '$lib/utils';
-	import { _ } from '$lib/i18n';
-	import InfiniteLoading, { type InfiniteEvent } from 'svelte-infinite-loading';
-	import ItemsList from '$lib/components/layout/ItemsList.svelte';
-	import Author from '$lib/components/Author.svelte';
+	import { getChannelContent, searchChannelContent } from '#lib/api/index';
+	import type { ChannelContent, ChannelContentTypes, ChannelSortBy } from '#lib/api/model';
+	import PageLoading from '#lib/components/PageLoading.svelte';
+	import { proxyGoogleImage } from '#lib/images';
+	import { cleanNumber } from '#lib/numbers';
+	import { channelCacheStore } from '#lib/store';
+	import { isAndroidTv } from '#lib/utils';
+	import { _ } from '#lib/i18n/index';
+	import InfiniteLoading, { type InfiniteEvent } from '#lib/components/InfiniteLoading.svelte';
+	import ItemsList from '#lib/components/layout/ItemsList.svelte';
+	import Author from '#lib/components/Author.svelte';
 	import { page } from '$app/state';
-	import { isYTBackend } from '$lib/backend';
-	import Share from '$lib/components/Share.svelte';
+	import { isYTBackend } from '#lib/backend';
+	import Share from '#lib/components/Share.svelte';
 	import { resolve } from '$app/paths';
 
 	let tab: ChannelContentTypes = $state('videos');
@@ -22,14 +22,17 @@
 
 	let showSearch: boolean = $state(false);
 	let channelSearch: string = $state('');
+	let multipleActions = $state(false);
 
 	let displayContent: ChannelContent | undefined = $state(undefined);
 
 	let channelSearchDebounce: ReturnType<typeof setTimeout>;
 
+	const slug = $derived(page.params.slug as string);
+
 	$effect(() => {
-		if ($channelCacheStore[page.params.slug]) {
-			displayContent = $channelCacheStore[page.params.slug].displayContent.videos;
+		if ($channelCacheStore[slug]) {
+			displayContent = $channelCacheStore[slug].displayContent.videos;
 		}
 	});
 
@@ -37,15 +40,22 @@
 		if (channelSearchDebounce) clearTimeout(channelSearchDebounce);
 
 		if (channelSearch.trim() === '') {
-			displayContent = $channelCacheStore[page.params.slug].displayContent.videos;
+			displayContent = $channelCacheStore[slug].displayContent.videos;
 			return;
 		}
 
 		channelSearchDebounce = setTimeout(async () => {
 			displayContent = {
-				videos: await searchChannelContent(page.params.slug, channelSearch)
+				videos: await searchChannelContent(slug, channelSearch)
 			};
 		}, 200);
+	}
+
+	function closeChannelSearch() {
+		if (channelSearchDebounce) clearTimeout(channelSearchDebounce);
+		channelSearch = '';
+		showSearch = false;
+		displayContent = $channelCacheStore[slug].displayContent.videos;
 	}
 
 	async function loadMore(event: InfiniteEvent) {
@@ -64,7 +74,7 @@
 				return;
 			}
 
-			newContent = await getChannelContent(page.params.slug, {
+			newContent = await getChannelContent(slug, {
 				type: tab,
 				continuation: displayContent.continuation,
 				sortBy: sortBy
@@ -96,28 +106,28 @@
 	async function changeTab(newTab: 'videos' | 'playlists' | 'streams' | 'shorts') {
 		tab = newTab;
 		displayContent = undefined;
-		displayContent = await getChannelContent(page.params.slug, { type: tab });
+		displayContent = await getChannelContent(slug, { type: tab });
 	}
 
 	let bannerSrc = $derived(
-		proxyGoogleImage($channelCacheStore[page.params.slug]?.channel?.authorBanners?.[0]?.url ?? '')
+		proxyGoogleImage($channelCacheStore[slug]?.channel?.authorBanners?.[0]?.url ?? '')
 	);
 </script>
 
-{#if $channelCacheStore[page.params.slug]}
+{#if $channelCacheStore[slug]}
 	<div class="padding">
 		<img src={bannerSrc} width="100%" alt="Channel banner" />
 		<div class="description">
 			<div>
 				<Author
 					channel={{
-						...$channelCacheStore[page.params.slug].channel,
-						subCountText: cleanNumber($channelCacheStore[page.params.slug].channel.subCount)
+						...$channelCacheStore[slug].channel,
+						subCountText: cleanNumber($channelCacheStore[slug].channel.subCount)
 					}}
 				/>
 				<p style="width: 60vw;max-height: 150px;overflow: scroll;">
 					<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-					{@html $channelCacheStore[page.params.slug].channel.description}
+					{@html $channelCacheStore[slug].channel.description}
 				</p>
 			</div>
 			{#if !isAndroidTv()}
@@ -126,21 +136,21 @@
 					shares={[
 						{
 							type: 'materialious',
-							path: resolve('/channel/[channelId]', {
-								channelId: page.params.slug
+							path: resolve('/(app)/channel/[slug]', {
+								slug
 							})
 						},
 						{
 							type: 'youtube',
-							path: `/channel/${page.params.slug}`
+							path: `/channel/${slug}`
 						},
 						{
 							type: 'invidious',
-							path: `/channel/${page.params.slug}`
+							path: `/channel/${slug}`
 						},
 						{
 							type: 'invidious redirect',
-							path: `/channel/${page.params.slug}`
+							path: `/channel/${slug}`
 						}
 					]}
 				/>
@@ -148,25 +158,25 @@
 		</div>
 
 		<div class="tabs left-align scroll">
-			{#if $channelCacheStore[page.params.slug].channel.tabs.includes('videos')}
+			{#if $channelCacheStore[slug].channel.tabs.includes('videos')}
 				<a class:active={tab === 'videos'} onclick={() => changeTab('videos')} href="#video">
 					<i>movie</i>
 					<span>{$_('videoTabs.videos')}</span>
 				</a>
 			{/if}
-			{#if $channelCacheStore[page.params.slug].channel.tabs.includes('shorts')}
+			{#if $channelCacheStore[slug].channel.tabs.includes('shorts')}
 				<a class:active={tab === 'shorts'} onclick={() => changeTab('shorts')} href="#short">
 					<i>smartphone</i>
 					<span>{$_('videoTabs.shorts')}</span>
 				</a>
 			{/if}
-			{#if $channelCacheStore[page.params.slug].channel.tabs.includes('streams')}
+			{#if $channelCacheStore[slug].channel.tabs.includes('streams')}
 				<a class:active={tab === 'streams'} onclick={() => changeTab('streams')} href="#stream">
 					<i>stream</i>
 					<span>{$_('videoTabs.streams')}</span>
 				</a>
 			{/if}
-			{#if $channelCacheStore[page.params.slug].channel.tabs.includes('playlists')}
+			{#if $channelCacheStore[slug].channel.tabs.includes('playlists')}
 				<a
 					class:active={tab === 'playlists'}
 					onclick={() => changeTab('playlists')}
@@ -178,53 +188,65 @@
 			{/if}
 		</div>
 
-		<div class="grid">
-			<div class="s12 m9 l9">
-				<nav class="group">
-					{#each sortByOptions as sortingOption (sortingOption)}
-						<button
-							class="no-round"
-							onclick={async () => {
-								sortBy = sortingOption;
+		<div class="channel-toolbar">
+			<nav class="group">
+				{#each sortByOptions as sortingOption (sortingOption)}
+					<button
+						class="no-round"
+						onclick={async () => {
+							sortBy = sortingOption;
 
-								displayContent = await getChannelContent(page.params.slug, {
-									type: tab,
-									sortBy: sortBy
-								});
-							}}
-							class:active={sortBy === sortingOption}>{$_(sortingOption)}</button
-						>
-					{/each}
-				</nav>
-			</div>
-			{#if !isYTBackend()}
-				<div class="s12 m3 l3">
+							displayContent = await getChannelContent(slug, {
+								type: tab,
+								sortBy: sortBy
+							});
+						}}
+						class:active={sortBy === sortingOption}>{$_(sortingOption)}</button
+					>
+				{/each}
+			</nav>
+			<div class="channel-toolbar-actions">
+				{#if !isYTBackend()}
 					{#if showSearch}
-						<div class="field suffix prefix suffix small no-margin surface-variant">
-							<i class="front">search</i><input
+						<div
+							class="field prefix suffix small no-margin round channel-search surface-container-highest"
+						>
+							<i class="front" tabindex="-1">search</i><input
 								bind:value={channelSearch}
 								oninput={searchChannel}
 								type="text"
 								placeholder={$_('searchPlaceholder')}
 							/>
+							<i class="front" role="presentation" onclick={closeChannelSearch}>close</i>
 						</div>
 					{:else}
-						<nav class="right-align m l">
-							<button onclick={() => (showSearch = true)}><i>search</i></button>
-						</nav>
-						<button class="s" onclick={() => (showSearch = true)}><i>search</i></button>
+						<button
+							class="surface-container-highest"
+							aria-label="Search channel"
+							onclick={() => (showSearch = true)}><i>search</i></button
+						>
 					{/if}
-				</div>
-			{/if}
+				{/if}
+				{#if !isAndroidTv() && displayContent && ('videos' in displayContent ? displayContent.videos.length > 0 : 'playlists' in displayContent && displayContent.playlists.length > 0)}
+					<button
+						class="surface-container-highest"
+						aria-label="Bulk actions"
+						aria-pressed={multipleActions}
+						onclick={() => (multipleActions = !multipleActions)}
+					>
+						<i>checklist</i><span class="m l">Bulk actions</span>
+					</button>
+				{/if}
+			</div>
 		</div>
 	</div>
 {/if}
 
 {#if displayContent}
 	{#if 'videos' in displayContent}
-		<ItemsList items={displayContent.videos} />
+		<ItemsList items={displayContent.videos} bind:multipleActions showActionButton={false} />
 	{:else}
-		<ItemsList items={displayContent.playlists} />
+		<ItemsList items={displayContent.playlists} bind:multipleActions showActionButton={false} />
 	{/if}
 	<InfiniteLoading on:infinite={loadMore} />
 {:else}
@@ -232,6 +254,39 @@
 {/if}
 
 <style>
+	.channel-toolbar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		margin: 0.5rem 0 1rem;
+	}
+
+	.channel-toolbar-actions {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		margin-left: auto;
+	}
+
+	.channel-search {
+		--_background: var(--surface-container-highest);
+	}
+
+	.channel-search input {
+		flex: 1;
+		min-width: 0;
+		background-color: var(--surface-container-highest);
+	}
+
+	.channel-search > .front:last-child {
+		cursor: pointer;
+		user-select: none;
+	}
+
 	.description {
 		display: flex;
 		padding: 1em 0;

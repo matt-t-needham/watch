@@ -2,9 +2,9 @@ import { get } from 'svelte/store';
 import type { VideoPlay } from '../model';
 import { buildPath, fetchErrorHandle } from './request';
 import { getVideoYTjs } from '../youtubejs/video';
-import { playerYouTubeJsFallback } from '$lib/store';
-import { isUnrestrictedPlatform } from '$lib/backend';
-import { associateAvatar } from '$lib/thumbnail';
+import { playerYouTubeJsFallback } from '#lib/store';
+import { isUnrestrictedPlatform } from '#lib/backend';
+import { associateAvatar } from '#lib/thumbnail';
 
 export async function getVideoInvidious(
 	videoId: string,
@@ -26,6 +26,9 @@ export async function getVideoInvidious(
 
 	if (resp.ok) {
 		await associateAvatar(respJson.authorId, respJson.authorThumbnails);
+
+		// Invidious omits `type` on recommended videos; ItemsList needs it to render them.
+		respJson.recommendedVideos?.forEach((video: { type?: string }) => (video.type ??= 'video'));
 	}
 
 	return respJson;

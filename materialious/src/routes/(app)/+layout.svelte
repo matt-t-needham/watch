@@ -1,19 +1,23 @@
 <script lang="ts">
+	import { invalidatePersonalPlaylists } from '#lib/api/index';
 	import { resolve } from '$app/paths';
+	import { resolvePath, resolveWatchPath } from '#lib/paths';
 	import { goto } from '$app/navigation';
 
 	import { navigating, page } from '$app/state';
-	import { getFeed, notificationsMarkAsRead } from '$lib/api/index';
-	import type { Notification } from '$lib/api/model';
-	import Logo from '$lib/components/Logo.svelte';
-	import PageLoading from '$lib/components/PageLoading.svelte';
-	import Search from '$lib/components/Search.svelte';
-	import Settings from '$lib/components/settings/Settings.svelte';
-	import Thumbnail from '$lib/components/thumbnail/VideoThumbnail.svelte';
-	import Player from '$lib/components/player/Player.svelte';
-	import { getPages } from '$lib/navPages';
+	import { getFeed, notificationsMarkAsRead } from '#lib/api/index';
+	import type { Notification } from '#lib/api/model';
+	import Logo from '#lib/components/Logo.svelte';
+	import PageLoading from '#lib/components/PageLoading.svelte';
+	import Search from '#lib/components/Search.svelte';
+	import Settings from '#lib/components/settings/Settings.svelte';
+	import Thumbnail from '#lib/components/thumbnail/VideoThumbnail.svelte';
+	import Player from '#lib/components/player/Player.svelte';
+	import { AndroidPictureInPicture } from '#lib/android/plugins/androidPictureInPicture';
+	import { getPages } from '#lib/navPages';
 	import {
 		invidiousAuthStore,
+		invidiousInstanceStore,
 		interfaceDefaultPage,
 		playerLoadingStore,
 		playerState,
@@ -24,37 +28,50 @@
 		backendInUseStore,
 		hideSearchStore,
 		keybindStore,
-		interfaceMobileBackButtonStore
-	} from '$lib/store';
+		interfaceMobileBackButtonStore,
+		videoQueueStore
+	} from '#lib/store';
 	import { Capacitor } from '@capacitor/core';
 	import ui from 'beercss';
 	import { onDestroy, onMount } from 'svelte';
+	import { derived } from 'svelte/store';
 	import Mousetrap from 'mousetrap';
-	import { _ } from '$lib/i18n';
-	import { isMaterialiousAccountActive, isYTBackend } from '$lib/backend';
-	import { isAndroidTv, isMobile, truncate, keyCodeMap } from '$lib/utils';
+	import { _ } from '#lib/i18n/index';
+	import { isMaterialiousAccountActive, isYTBackend } from '#lib/backend';
+	import { isAndroidTv, isMobile, keyCodeMap } from '#lib/utils';
 	import { getNextFocus } from '@bbc/tv-lrud-spatial';
-	import { goToInvidiousLogin, invidiousLogout, materialiousLogout } from '$lib/auth';
-	import { backendFetch } from '$lib/api/backend/request';
-	import Author from '$lib/components/Author.svelte';
-	import Toast from '$lib/components/Toast.svelte';
-	import { isOwnBackend } from '$lib/shared';
-	import { configBackendCache } from '$lib/stores/backend';
-	import WatchParty from '$lib/components/WatchParty.svelte';
+	import { materialiousLogout } from '#lib/auth';
+	import { backendFetch } from '#lib/api/backend/request';
+	import PlayerPip from '#lib/components/player/PlayerPip.svelte';
+	import Toast, { addToast } from '#lib/components/Toast.svelte';
+	import { HTTPError } from '#lib/api/invidious/request';
+	import { isRejectedInvidiousSession } from '#lib/api/invidious/session';
+	import { isOwnBackend } from '#lib/shared/index';
+	import { configBackendCache } from '#lib/stores/backend';
+	import WatchParty from '#lib/components/WatchParty.svelte';
+	import VideoQueue from '#lib/components/VideoQueue.svelte';
 
 	let { children } = $props();
 
-	const showLogin = $derived(!isYTBackend() || !!isOwnBackend()?.internalAuth);
+	const ownBackendStore = derived([materialiousBackendStore, configBackendCache], () =>
+		isOwnBackend()
+	);
+	const ytBackendStore = derived([backendInUseStore, ownBackendStore], () => isYTBackend());
+	const showLogin = $derived(
+		!!$ownBackendStore?.internalAuth || (!!$invidiousInstanceStore && !$ytBackendStore)
+	);
 
 	const accountLoggedIn = $derived(
-		(!!$rawMasterKeyStore && (!!isOwnBackend()?.internalAuth || !!$materialiousBackendStore)) ||
-			(!!$invidiousAuthStore && !isOwnBackend()?.internalAuth)
+		(!!$rawMasterKeyStore && (!!$ownBackendStore?.internalAuth || !!$materialiousBackendStore)) ||
+			(!!$invidiousAuthStore && !$ownBackendStore?.internalAuth)
 	);
 
 	let mobileSearchShow = $state(false);
 	let notifications: Notification[] = $state([]);
 	let playerIsPip = $state(false);
+	let isAndroidPictureInPicture = $state(false);
 	let showWatchParty = $state(page.url.searchParams.get('room') !== null);
+	let showVideoQueue = $state(false);
 	let watchPartySupported = $state(isOwnBackend() !== null);
 	materialiousBackendStore.subscribe(() => {
 		watchPartySupported = isOwnBackend() !== null;
@@ -63,15 +80,36 @@
 		watchPartySupported = isOwnBackend() !== null;
 	});
 	let leftNavElement: HTMLElement | undefined = $state();
+	let lastMainFocus: HTMLElement | undefined;
 
 	let pages = $state(getPages());
+	let pictureInPictureListener: { remove: () => Promise<void> } | undefined;
+
+	onMount(async () => {
+		if (Capacitor.getPlatform() === 'android') {
+			pictureInPictureListener = await AndroidPictureInPicture.addListener(
+				'pictureInPictureModeChanged',
+				({ isInPictureInPictureMode }) => {
+					isAndroidPictureInPicture = isInPictureInPictureMode;
+				}
+			);
+		}
+	});
+
+	onDestroy(async () => {
+		await pictureInPictureListener?.remove();
+	});
+
 	invidiousAuthStore.subscribe(() => {
+		invalidatePersonalPlaylists();
 		pages = getPages();
 	});
 	rawMasterKeyStore.subscribe(() => {
+		invalidatePersonalPlaylists();
 		pages = getPages();
 	});
 	backendInUseStore.subscribe(() => {
+		invalidatePersonalPlaylists();
 		pages = getPages();
 	});
 
@@ -85,24 +123,51 @@
 
 	async function login() {
 		if (isOwnBackend()?.internalAuth) {
-			goto(resolve('/login/internal', {}));
+			goto(resolve('/(app)/login/internal'));
 			return;
 		}
 
-		if (!isAndroidTv()) {
-			await goToInvidiousLogin();
-		} else {
-			goto(resolve('/login/tv', {}));
-		}
-	}
-
-	async function logout() {
-		await ($rawMasterKeyStore ? materialiousLogout : invidiousLogout)();
+		goto(resolve('/(app)/login/invidious'));
 	}
 
 	async function loadNotifications() {
-		const feed = await getFeed(100, 1);
-		notifications = feed.notifications;
+		const checkedAuth = $invidiousAuthStore;
+		const checkedInstance = $invidiousInstanceStore;
+		if (!checkedAuth || !checkedInstance || isYTBackend()) return;
+
+		const stillCurrent = () =>
+			checkedAuth === $invidiousAuthStore &&
+			checkedInstance === $invidiousInstanceStore &&
+			!isYTBackend();
+
+		try {
+			const feed = await getFeed(100, 1);
+			if (stillCurrent()) notifications = feed.notifications;
+		} catch (error) {
+			if (!stillCurrent()) return;
+			console.error('Failed to load invidious feed', error);
+			if (
+				error instanceof HTTPError &&
+				isRejectedInvidiousSession(error.response.status, error.apiError)
+			) {
+				// Keep the synchronized cloud copy; it may still be used by other devices.
+				invidiousAuthStore.set(null);
+				addToast({ data: { text: $_('invidiousSessionExpired'), icon: 'error' } });
+			} else {
+				addToast({
+					data: {
+						text: $_('invidiousCheckFailed'),
+						icon: 'error',
+						action: {
+							text: $_('player.retry'),
+							action: () => {
+								void loadNotifications();
+							}
+						}
+					}
+				});
+			}
+		}
 	}
 
 	function resetScroll() {
@@ -114,12 +179,7 @@
 
 	onMount(async () => {
 		if ($invidiousAuthStore && !isYTBackend()) {
-			loadNotifications().catch((error) => {
-				console.error('Failed to load invidious feed', error);
-				// A rejected token is only invalid on this device. Don't delete the
-				// synchronized cloud copy, which other (or future) sessions rely on.
-				invidiousAuthStore.set(null);
-			});
+			void loadNotifications();
 		}
 
 		if (isMaterialiousAccountActive()) {
@@ -228,7 +288,7 @@
 				const p = getPages();
 				const tab = p[index];
 				if (tab) {
-					goto(resolve(tab.href, {}));
+					goto(resolvePath(tab.href));
 				}
 				return false;
 			});
@@ -269,62 +329,114 @@
 				return;
 			}
 			const main = document.getElementById('main-content');
-			main?.querySelector<HTMLElement>('[tabindex], a, input, button')?.focus();
+			if (!main) return;
+			// Back to where the user was in the page, else the nearest thing to the right.
+			const next =
+				(lastMainFocus && main.contains(lastMainFocus) ? lastMainFocus : undefined) ??
+				(getNextFocus(target, keyCode, main) as HTMLElement | undefined) ??
+				main.querySelector<HTMLElement>('[tabindex], a, input, button');
+			next?.focus({ preventScroll: true });
+			next?.scrollIntoView({ block: 'center', inline: 'nearest' });
 		}
 	}
+
+	// TV: an arrow press with nothing focused lands on the first visible card, not nowhere.
+	function recoverLostFocus(event: KeyboardEvent) {
+		if (!isAndroidTv() || event.defaultPrevented || !keyCodeMap[event.key]) return;
+		const active = document.activeElement;
+		if (active && active !== document.body && active.id !== 'main-content') return;
+
+		const main = document.getElementById('main-content');
+		const cards = Array.from(main?.querySelectorAll<HTMLElement>('article.item-select') ?? []);
+		const target =
+			cards.find((card) => card.getBoundingClientRect().bottom > 0) ??
+			main?.querySelector<HTMLElement>('a, button, input, [tabindex="0"]') ??
+			leftNavElement?.querySelector<HTMLElement>('a.active, a');
+		if (!target) return;
+
+		event.preventDefault();
+		target.focus({ preventScroll: true });
+		target.scrollIntoView({ block: 'nearest' });
+	}
 </script>
+
+<svelte:window onkeydown={recoverLostFocus} />
 
 <div>
 	<nav
 		id="left-nav"
 		class="left m l surface-container"
 		class:tv-nav={isAndroidTv()}
-		class:hide-element={$playerTheatreModeIsActive || $playerIsInWindowFullscreen}
+		class:hide-element={$playerTheatreModeIsActive ||
+			$playerIsInWindowFullscreen ||
+			isAndroidPictureInPicture}
 		bind:this={leftNavElement}
 		onkeydown={handleLeftNavKeyDown}
 	>
 		{#if !isAndroidTv()}
 			<header class="small-padding no-margin">
 				<a
-					href={resolve($interfaceDefaultPage, {})}
+					href={resolvePath($interfaceDefaultPage)}
 					tabindex="-1"
-					data-sveltekit-preload-data="off"
+					data-sveltekit-preload-data="false"
 				>
 					<Logo />
 				</a>
 			</header>
 		{/if}
 		{#if isAndroidTv()}
-			<a href={resolve('/search', {})} class:active={page.url.href.endsWith('/search')}>
+			<a
+				href={resolve('/(app)/search')}
+				class:active={page.url.pathname === resolve('/(app)/search')}
+			>
 				<i>search</i>
 				<div>{$_('searchPlaceholder')}</div>
 			</a>
 		{/if}
 		{#each pages as navPage (navPage)}
-			<a href={resolve(navPage.href, {})} class:active={page.url.href.endsWith(navPage.href)}
+			<a
+				href={resolvePath(navPage.href)}
+				class:active={page.url.pathname === resolvePath(navPage.href)}
 				><i>{navPage.icon}</i>
 				<div>{navPage.name}</div>
 			</a>
 		{/each}
 		{#if isAndroidTv()}
 			<div class="divider"></div>
-			<a href={resolve('/settings', {})} class:active={page.url.href.endsWith('/settings')}>
+			<a
+				href={resolve('/(app)/settings')}
+				class:active={page.url.pathname === resolve('/(app)/settings')}
+			>
 				<i>settings</i>
 				<div>{$_('layout.settings')}</div>
 			</a>
 			{#if showLogin}
 				{#if !accountLoggedIn}
-					<a onclick={login} href="#login">
+					<a
+						onclick={login}
+						href="#login"
+						class:active={page.url.pathname === resolve('/(app)/login/internal') ||
+							page.url.pathname === resolve('/(app)/login/invidious')}
+					>
 						<i>login</i>
 						<div>{$_('layout.login')}</div>
 					</a>
-				{:else}
-					<a onclick={logout} href="#logout">
-						<i>logout</i>
-						<div>{$_('layout.logout')}</div>
-					</a>
 				{/if}
 			{/if}
+		{/if}
+		{#if Capacitor.getPlatform() === 'android' && !isAndroidTv() && showLogin && !accountLoggedIn}
+			<a
+				href={$ownBackendStore?.internalAuth ? resolve('/(app)/login/internal') : '#login'}
+				class:active={page.url.pathname === resolve('/(app)/login/internal') ||
+					page.url.pathname === resolve('/(app)/login/invidious')}
+				onclick={(event) => {
+					event.preventDefault();
+					void login();
+				}}
+			>
+				<i>login</i>
+				<div>{$_('layout.login')}</div>
+			</a>
 		{/if}
 	</nav>
 	{#if !isAndroidTv()}
@@ -332,11 +444,11 @@
 			class="top"
 			id="top-content"
 			class:tv-nav={isAndroidTv()}
-			class:hide-element={$playerIsInWindowFullscreen}
+			class:hide-element={$playerIsInWindowFullscreen || isAndroidPictureInPicture}
 		>
 			{#if $playerTheatreModeIsActive}
 				<header role="presentation" style="cursor: pointer;" tabindex="-1" class="small-padding">
-					<a href={resolve($interfaceDefaultPage, {})}>
+					<a href={resolvePath($interfaceDefaultPage)}>
 						<Logo />
 					</a>
 				</header>
@@ -382,16 +494,28 @@
 			{#if mobileSearchShow}
 				<div class="mobile-search-container">
 					<div style="width: 100%;">
-						<Search on:searchCancelled={() => (mobileSearchShow = false)} />
+						<Search autoFocus on:searchCancelled={() => (mobileSearchShow = false)} />
 					</div>
 				</div>
 			{:else}
+				<button
+					class="circle large transparent"
+					onclick={() => {
+						if (!showVideoQueue) showVideoQueue = true;
+						else ui('#dialog-video-queue');
+					}}
+					aria-label={$_('queue.header')}
+				>
+					<i>queue_music</i>
+					<div class="badge secondary">{$videoQueueStore.length}</div>
+					<div class="tooltip bottom">{$_('queue.header')}</div>
+				</button>
 				<!-- Watch parties run on the own backend -->
 				{#if watchPartySupported}
 					<button
 						onclick={() => {
-							showWatchParty = !showWatchParty;
-							if (showWatchParty) resetScroll();
+							if (!showWatchParty) showWatchParty = true;
+							else ui('#dialog-watch-party');
 						}}
 						class="circle large transparent"
 						class:active={showWatchParty}
@@ -424,16 +548,11 @@
 						<div class="tooltip bottom">{$_('layout.settings')}</div>
 					</button>
 				{/if}
-				{#if showLogin}
+				{#if showLogin && Capacitor.getPlatform() !== 'android'}
 					{#if !accountLoggedIn}
 						<button onclick={login} class="circle large transparent">
 							<i>login</i>
 							<div class="tooltip bottom">{$_('layout.login')}</div>
-						</button>
-					{:else}
-						<button onclick={logout} class="circle large transparent">
-							<i>logout</i>
-							<div class="tooltip bottom">{$_('layout.logout')}</div>
 						</button>
 					{/if}
 				{/if}
@@ -441,49 +560,67 @@
 		</nav>
 	{/if}
 
-	<nav class="bottom s" class:hide-element={$playerIsInWindowFullscreen}>
+	<nav
+		class="bottom s"
+		class:hide-element={$playerIsInWindowFullscreen || isAndroidPictureInPicture}
+	>
 		{#each pages as navPage (navPage)}
 			<a
 				class="round"
-				href={resolve(navPage.href, {})}
-				class:active={page.url.href.endsWith(navPage.href)}
-				data-sveltekit-preload-data="off"
+				href={resolvePath(navPage.href)}
+				class:active={page.url.pathname === resolvePath(navPage.href)}
+				data-sveltekit-preload-data="false"
 				><i>{navPage.icon}</i>
 				<span style="font-size: .8em;">{navPage.name}</span>
 			</a>
 		{/each}
+		{#if Capacitor.getPlatform() === 'android' && !isAndroidTv() && showLogin && !accountLoggedIn}
+			<a
+				class="round"
+				href={$ownBackendStore?.internalAuth ? resolve('/(app)/login/internal') : '#login'}
+				class:active={page.url.pathname === resolve('/(app)/login/internal')}
+				onclick={(event) => {
+					event.preventDefault();
+					void login();
+				}}
+			>
+				<i>login</i>
+				<span style="font-size: .8em;">{$_('layout.login')}</span>
+			</a>
+		{/if}
 	</nav>
 
 	{#if !isAndroidTv()}
 		<Settings />
 	{/if}
 
-	<dialog class="right" id="dialog-notifications">
-		<nav>
-			<h5 class="max">{$_('layout.notifications')}</h5>
-			<button class="circle transparent" data-ui="#dialog-notifications"><i>close</i></button>
-		</nav>
+	<dialog class="right surface-container" id="dialog-notifications">
+		<header class="row">
+			<h4 class="max">{$_('layout.notifications')}</h4>
+			<button class="circle transparent" data-ui="#dialog-notifications" aria-label={$_('cancel')}
+				><i>close</i></button
+			>
+		</header>
 		{#if notifications.length === 0}
-			<p>{$_('layout.noNewNotifications')}</p>
+			<p class="notifications-empty">{$_('layout.noNewNotifications')}</p>
 		{:else}
-			{#each notifications as notification (notification)}
-				<article class="no-padding border">
-					<Thumbnail video={notification} sideways={true}></Thumbnail>
-				</article>
-			{/each}
+			<div class="notifications-list">
+				{#each notifications as notification (notification)}
+					<article class="no-padding border notification-thumbnail">
+						<Thumbnail video={notification} sideways={true}></Thumbnail>
+					</article>
+				{/each}
+			</div>
 		{/if}
 	</dialog>
 
 	<main
 		id="main-content"
-		tabindex="0"
+		tabindex={isAndroidTv() ? -1 : 0}
+		onfocusin={(event) => (lastMainFocus = event.target as HTMLElement)}
 		class="responsive max root"
 		class:full-window-main={$playerIsInWindowFullscreen}
 	>
-		{#if showWatchParty && watchPartySupported}
-			<WatchParty />
-		{/if}
-
 		{#if $playerLoadingStore && !$playerState}
 			<div class="grid">
 				<div
@@ -503,7 +640,8 @@
 				</div>
 			</div>
 		{/if}
-		{#if $playerState}
+		{#if $playerState?.data}
+			{@const activePlayer = $playerState}
 			<div class="grid">
 				<div
 					class:pip={playerIsPip}
@@ -513,50 +651,27 @@
 					class:l9={!$playerTheatreModeIsActive && !$playerIsInWindowFullscreen && !playerIsPip}
 				>
 					<div class="pip-info">
+						<div class="player" bind:this={playerActiveArea}>
+							{#key activePlayer.data.video.videoId}
+								<Player data={activePlayer.data} {playerIsPip} />
+							{/key}
+							{#if playerIsPip}
+								<a
+									class="pip-video-link"
+									href={resolveWatchPath(
+										activePlayer.data.video.videoId,
+										activePlayer.data.playlistId ?? undefined
+									)}
+									aria-label={activePlayer.data.video.title}
+								></a>
+							{/if}
+						</div>
 						{#if playerIsPip}
-							<div>
-								<nav>
-									<h6 class="max">{truncate($playerState.data.video.title, 25)}</h6>
-									<button
-										class="surface-container-highest m l"
-										onclick={() => playerState.set(undefined)}
-									>
-										<i>close</i>
-									</button>
-								</nav>
-								<div class="space"></div>
-								<nav class="s">
-									<a
-										class="button surface-container-highest"
-										href={resolve(`/watch/[videoId]`, { videoId: $playerState.data.video.videoId })}
-										><i>keyboard_arrow_right</i></a
-									>
-									<button
-										class="surface-container-highest"
-										onclick={() => playerState.set(undefined)}
-									>
-										<i>close</i>
-									</button>
-								</nav>
+							<div class="pip-details">
+								<PlayerPip {activePlayer} />
 							</div>
 						{/if}
-						<div class="player" bind:this={playerActiveArea}>
-							{#key $playerState.data.video.videoId}
-								<Player data={$playerState.data} {playerIsPip} />
-							{/key}
-						</div>
 					</div>
-					{#if playerIsPip}
-						<nav class="m l">
-							<Author channel={$playerState.data.video} hideSubscribe={true} />
-							<div class="max"></div>
-							<a
-								class="button surface-container-highest"
-								href={resolve(`/watch/[videoId]`, { videoId: $playerState.data.video.videoId })}
-								><i>keyboard_arrow_right</i></a
-							>
-						</nav>
-					{/if}
 				</div>
 			</div>
 		{/if}
@@ -570,11 +685,19 @@
 
 		<Toast />
 	</main>
+
+	{#if showWatchParty && watchPartySupported}
+		<WatchParty onLeave={() => (showWatchParty = false)} />
+	{/if}
+
+	{#if showVideoQueue}
+		<VideoQueue />
+	{/if}
 </div>
 
 <style>
 	.hide-element {
-		display: none;
+		display: none !important;
 	}
 
 	.tv-nav {
@@ -598,10 +721,44 @@
 	.player {
 		display: flex;
 		justify-content: center;
+		position: relative;
+	}
+
+	.pip-video-link {
+		position: absolute;
+		inset: 0;
+		z-index: 1;
 	}
 
 	#dialog-notifications {
-		width: 500px;
+		width: min(32rem, calc(100vw - 2rem));
+		max-width: 100%;
+		padding: 1rem;
+	}
+
+	#dialog-notifications header {
+		align-items: center;
+		margin-bottom: 1rem;
+	}
+
+	#dialog-notifications h4 {
+		margin: 0 0 0.75rem;
+	}
+
+	.notifications-list {
+		display: grid;
+		gap: 0.75rem;
+	}
+
+	.notification-thumbnail {
+		width: 100%;
+		min-width: 0;
+		margin: 0;
+		background: var(--surface-container-highest);
+	}
+
+	.notifications-empty {
+		opacity: 0.7;
 	}
 
 	@media only screen and (max-width: 993px) {
@@ -614,24 +771,24 @@
 			width: 100%;
 			bottom: 100px;
 			right: 0px;
-		}
-
-		#dialog-notifications {
-			width: 100%;
+			padding: 0.5rem;
 		}
 
 		.pip > .pip-info > .player {
-			height: 80px;
-			width: 150px;
+			flex: 0 0 40%;
+			max-width: 150px;
+			align-self: center;
 		}
 
 		.pip > .pip-info {
 			display: flex;
-			justify-content: space-between;
+			align-items: flex-start;
+			gap: 0.5rem;
 		}
 
-		.pip h6 {
-			font-size: 1em;
+		.pip-details {
+			flex: 1;
+			min-width: 0;
 		}
 	}
 

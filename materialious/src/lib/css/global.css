@@ -54,10 +54,6 @@ article {
 	padding: 0.1em 0.4em;
 }
 
-.infinite-status-prompt {
-	display: none !important;
-}
-
 #dialog-settings form {
 	margin: 1em 0;
 }
@@ -73,15 +69,6 @@ article {
 .left-round,
 .right-round {
 	border-radius: var(--border-radius) !important;
-}
-
-nav.top {
-	padding-bottom: 1em;
-	padding-top: calc(var(--safe-area-inset-top) + 1rem) !important;
-}
-
-nav.bottom {
-	padding-bottom: var(--safe-area-inset-bottom) !important;
 }
 
 dialog {
@@ -191,6 +178,20 @@ menu.player-settings li.selected i {
 
 .player-slider.full-width {
 	width: 100%;
+}
+
+.volume-control {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.5rem 0.75rem;
+	border-radius: var(--border-radius);
+	background: var(--surface-container-highest);
+}
+
+.volume-control > i {
+	color: white;
+	font-size: 1.5rem;
 }
 
 .player-slider.volume {

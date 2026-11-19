@@ -1,11 +1,21 @@
-import { isOwnBackend } from '$lib/shared';
-import { env } from '$env/dynamic/public';
-import { env as privateEnv } from '$env/dynamic/private';
+import { isOwnBackend } from '#lib/shared/index';
+
+import {
+	PUBLIC_DEFAULT_DEARROW_THUMBNAIL_INSTANCE,
+	PUBLIC_DEFAULT_DEARROW_INSTANCE,
+	PUBLIC_DEFAULT_INVIDIOUS_INSTANCE,
+	PUBLIC_DEFAULT_RETURNYTDISLIKES_INSTANCE,
+	PUBLIC_DEFAULT_API_EXTENDED_INSTANCE,
+	PUBLIC_DEFAULT_COMPANION_INSTANCE
+} from '$app/env/public';
+
+import { WHITELIST_BASE_DOMAIN, PROXY_TRUST_CA } from '$app/env/private';
 import { Agent, fetch as undiciFetch } from 'undici';
 import fs from 'fs';
 import tls from 'tls';
 
 import { error } from '@sveltejs/kit';
+import { PUBLIC_PROXY_DISABLED, PUBLIC_REQUIRE_BROWSER_COMPANION } from '$app/env/public';
 import { parse as tldParse } from 'tldts';
 import { USER_AGENT } from 'bgutils-js/utils';
 import sodium from 'libsodium-wrappers-sumo';
@@ -16,6 +26,7 @@ const ALLOWED_HEADERS = [
 	'Content-Type',
 	'Accept',
 	'Authorization',
+	'X-Invidious-SID',
 	'x-goog-visitor-id',
 	'x-goog-api-key',
 	'x-origin',
@@ -40,19 +51,19 @@ const allowedBaseDomains: string[] = [
 	'googleapis.com'
 ];
 
-if (privateEnv.WHITELIST_BASE_DOMAIN) {
-	for (const baseDomain of privateEnv.WHITELIST_BASE_DOMAIN.split(',')) {
+if (WHITELIST_BASE_DOMAIN) {
+	for (const baseDomain of WHITELIST_BASE_DOMAIN.split(',')) {
 		if (baseDomain) allowedBaseDomains.push(baseDomain);
 	}
 }
 
 const dynamicAllowDomainsEnvVars = [
-	env.PUBLIC_DEFAULT_DEARROW_THUMBNAIL_INSTANCE,
-	env.PUBLIC_DEFAULT_DEARROW_INSTANCE,
-	env.PUBLIC_DEFAULT_INVIDIOUS_INSTANCE,
-	env.PUBLIC_DEFAULT_RETURNYTDISLIKES_INSTANCE,
-	env.PUBLIC_DEFAULT_API_EXTENDED_INSTANCE,
-	env.PUBLIC_DEFAULT_COMPANION_INSTANCE
+	PUBLIC_DEFAULT_DEARROW_THUMBNAIL_INSTANCE,
+	PUBLIC_DEFAULT_DEARROW_INSTANCE,
+	PUBLIC_DEFAULT_INVIDIOUS_INSTANCE,
+	PUBLIC_DEFAULT_RETURNYTDISLIKES_INSTANCE,
+	PUBLIC_DEFAULT_API_EXTENDED_INSTANCE,
+	PUBLIC_DEFAULT_COMPANION_INSTANCE
 ];
 
 const dynamicAllowDomains: string[] = [];
@@ -73,7 +84,7 @@ for (const dynamicDomain of dynamicAllowDomainsEnvVars) {
 // dispatcher and fetch come from the same copy.
 let dispatcher: Agent | undefined;
 
-const certPath = privateEnv.PROXY_TRUST_CA;
+const certPath = PROXY_TRUST_CA;
 if (certPath && fs.existsSync(certPath)) {
 	dispatcher = new Agent({
 		connect: {
@@ -87,9 +98,12 @@ async function proxyRequest(
 	urlToProxy: string,
 	userId: string | undefined = undefined
 ): Promise<Response> {
+	if (PUBLIC_PROXY_DISABLED === 'true' || PUBLIC_REQUIRE_BROWSER_COMPANION === 'true') {
+		throw error(404, 'Proxy endpoint disabled');
+	}
+
 	const backendRestrictions = isOwnBackend();
 	if (!backendRestrictions) {
-		// Shouldn't be possible.
 		throw error(400, 'How did you get here?');
 	}
 
@@ -99,7 +113,9 @@ async function proxyRequest(
 
 	let urlToProxyObj: URL;
 	try {
-		urlToProxyObj = new URL(decodeURIComponent(urlToProxy));
+		// SvelteKit already decodes the route parameter. A second decode
+		// changes escaped delimiters inside YouTube's signed live URLs.
+		urlToProxyObj = new URL(urlToProxy);
 	} catch {
 		throw error(400, 'Invalid URL');
 	}
@@ -138,14 +154,22 @@ async function proxyRequest(
 		'sec-ch-ua-platform',
 		'cookie', // Ensure auth cookies don't become included.
 		'x-bix-auth', // bix: our login token (hooks.server.ts) never leaves for YouTube.
-		'content-type',
 		'content-length'
 	]) {
 		requestHeaders.delete(key);
 	}
 
+	const sid = requestHeaders.get('x-invidious-sid');
+	requestHeaders.delete('x-invidious-sid');
+	if (sid) {
+		if (!/^SID=[^\s;,]+$/.test(sid)) throw error(400, 'Invalid SID');
+		requestHeaders.set('cookie', sid);
+		requestHeaders.delete('authorization');
+	}
+
 	const requestOptions: RequestInit = {
 		method: request.method,
+		redirect: sid ? 'manual' : 'follow',
 		headers: requestHeaders,
 		credentials: 'same-origin',
 		...(request.body ? { duplex: 'half' } : {})
@@ -194,9 +218,15 @@ async function proxyRequest(
 		throw error(500, errorMsg);
 	}
 
+	if (sid && response.status >= 300 && response.status < 400) {
+		await response.body?.cancel();
+		throw error(502, 'Unexpected authenticated redirect');
+	}
+
 	const responseHeaders = new Headers(response.headers);
 	responseHeaders.delete('content-encoding');
 	responseHeaders.delete('content-length');
+	responseHeaders.delete('set-cookie');
 
 	return new Response(response.body, {
 		status: response.status,

@@ -1,17 +1,19 @@
 <script lang="ts">
-	import { getSearch } from '$lib/api';
-	import PageLoading from '$lib/components/PageLoading.svelte';
-	import { searchCacheStore } from '$lib/store';
-	import { _ } from '$lib/i18n';
-	import InfiniteLoading, { type InfiniteEvent } from 'svelte-infinite-loading';
-	import ItemsList from '$lib/components/layout/ItemsList.svelte';
-	import type { SearchOptions, SearchResults } from '$lib/api/model';
+	import { getSearch } from '#lib/api/index';
+	import PageLoading from '#lib/components/PageLoading.svelte';
+	import { searchCacheStore } from '#lib/store';
+	import { _ } from '#lib/i18n/index';
+	import InfiniteLoading, { type InfiniteEvent } from '#lib/components/InfiniteLoading.svelte';
+	import ItemsList from '#lib/components/layout/ItemsList.svelte';
+	import type { SearchOptions, SearchResults } from '#lib/api/model';
+	import { isAndroidTv } from '#lib/utils';
 
 	let { data } = $props();
 
 	let currentPage = 1;
 
 	let filtersOpen = $state(false);
+	let multipleActions = $state(false);
 
 	let searchOptions: SearchOptions = $state({
 		type: 'all',
@@ -99,11 +101,12 @@
 	}
 </script>
 
-<details open={filtersOpen}>
+<nav class="search-actions">
+	<details open={filtersOpen}>
 	<summary>
 		<nav>
 			<button
-				class="secondary"
+				class="surface-container-highest"
 				onclick={() => {
 					filtersOpen = !filtersOpen;
 				}}
@@ -148,14 +151,39 @@
 			{/each}
 		</div>
 	</article>
-</details>
+	</details>
+	{#if !isAndroidTv() && ($searchCacheStore[data.searchStoreId]?.length ?? 0) > 0}
+	<button
+		class="surface-container-highest"
+		aria-label="Bulk actions"
+		aria-pressed={multipleActions}
+		onclick={() => (multipleActions = !multipleActions)}
+	>
+		<i>checklist</i>
+		<span class="m l">Bulk actions</span>
+	</button>
+	{/if}
+</nav>
 
 <div class="space"></div>
 
 {#if $searchCacheStore[data.searchStoreId]}
-	<ItemsList items={$searchCacheStore[data.searchStoreId]} />
+	<ItemsList items={$searchCacheStore[data.searchStoreId]} bind:multipleActions showActionButton={false} />
 {:else}
 	<PageLoading />
 {/if}
 
 <InfiniteLoading on:infinite={loadMore} />
+
+<style>
+	.search-actions {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+	}
+
+	.search-actions details {
+		flex: 1;
+		min-width: 0;
+	}
+</style>

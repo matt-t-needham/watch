@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { getBestThumbnail, proxyGoogleImage } from '$lib/images';
-	import { cleanNumber } from '$lib/numbers';
-	import { _ } from '$lib/i18n';
-	import type { Channel } from '$lib/api/model';
-	import { isAndroidTv, truncate } from '$lib/utils';
+	import { getBestThumbnail, imageHandleCors, proxyGoogleImage } from '#lib/images';
+	import { cleanNumber } from '#lib/numbers';
+	import { _ } from '#lib/i18n/index';
+	import type { Channel } from '#lib/api/model';
+	import { isAndroidTv, truncate } from '#lib/utils';
 	import { Avatar } from 'melt/builders';
 	import { mergeAttrs } from 'melt';
 
@@ -14,11 +14,28 @@
 
 	let { channel }: Props = $props();
 
-	const avatar = new Avatar({ src: proxyGoogleImage(getBestThumbnail(channel.authorThumbnails)) });
+	let avatarSrc = $state('');
+	const avatar = new Avatar({ src: () => avatarSrc });
+
+	$effect(() => {
+		const src = proxyGoogleImage(getBestThumbnail(channel.authorThumbnails));
+		let active = true;
+		avatarSrc = '';
+		imageHandleCors(src)
+			.then((url) => {
+				if (active) avatarSrc = url;
+			})
+			.catch(() => {
+				if (active) avatarSrc = '';
+			});
+		return () => {
+			active = false;
+		};
+	});
 </script>
 
 <a
-	href={resolve(`/channel/[authorId]`, { authorId: channel.authorId })}
+	href={resolve('/(app)/channel/[slug]', { slug: channel.authorId })}
 	class="wave"
 	style="min-width: 100%;min-height: 100%;"
 >
@@ -28,6 +45,8 @@
 				{...avatar.image}
 				class="circle"
 				style="width: 90px;height: 90px;"
+				loading="lazy"
+				decoding="async"
 				alt={channel.author}
 			/>
 			<button

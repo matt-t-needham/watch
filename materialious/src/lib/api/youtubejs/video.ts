@@ -1,4 +1,4 @@
-import { androidPoTokenMinter } from '$lib/android/youtube/minter';
+import { androidPoTokenMinter } from '#lib/android/youtube/minter';
 import type {
 	AdaptiveFormats,
 	Captions,
@@ -7,17 +7,16 @@ import type {
 	Thumbnail,
 	VideoBase,
 	VideoPlay
-} from '$lib/api/model';
-import { poTokenCacheStore } from '$lib/store';
-import { convertToSeconds } from '$lib/time';
+} from '#lib/api/model';
+import { poTokenCacheStore } from '#lib/store';
+import { convertToSeconds } from '#lib/time';
 import { Capacitor } from '@capacitor/core';
-import { get } from 'svelte/store';
 import type { Types } from 'youtubei.js';
 import { Innertube, Utils, YT, YTNodes, Platform } from 'youtubei.js';
 import { getInnertube } from '.';
-import { isUnrestrictedPlatform } from '$lib/backend';
-import { webPoTokenMinter } from '$lib/web/youtube/minter';
-import { associateAvatar } from '$lib/thumbnail';
+import { isUnrestrictedPlatform } from '#lib/backend';
+import { webPoTokenMinter } from '#lib/web/youtube/minter';
+import { associateAvatar } from '#lib/thumbnail';
 
 Platform.shim.eval = async (data: Types.BuildScriptResult) => new Function(data.output)();
 
@@ -109,8 +108,8 @@ export async function getVideoPageYTjs(videoId: string): Promise<VideoPlay> {
 
 		recommendedVideos.push({
 			videoThumbnails: (recommended?.content_image.image as Thumbnail[]) || [],
-			videoId: recommended.content_id,
-			title: recommended.metadata.title.toString(),
+			videoId: recommended.content_id ?? '',
+			title: recommended.metadata?.title?.toString() ?? '',
 			viewCountText,
 			author: recommended.metadata.metadata.metadata_rows[0]?.metadata_parts?.[0]?.text?.text ?? '',
 			lengthSeconds,
@@ -199,12 +198,43 @@ export async function getVideoPageYTjs(videoId: string): Promise<VideoPlay> {
 	};
 }
 
+const PO_TOKEN_REQUEST_KEY = 'O43z0dpjhgX20SCx4KAo';
+
+/**
+ * Mints a fresh playback PoToken for the given video and stores it for reuse.
+ * Also used by the SABR player to refresh tokens when YouTube asks for
+ * attestation mid-playback.
+ */
+export async function mintPoTokenForVideo(videoId: string, forceRefresh = false): Promise<string> {
+	let platformMinter: (
+		requestKey: string,
+		visitorData: string,
+		forceRefresh: boolean
+	) => Promise<string>;
+
+	switch (Capacitor.getPlatform()) {
+		case 'electron':
+			platformMinter = window.electronAPI.generatePoToken;
+			break;
+		case 'android':
+			platformMinter = androidPoTokenMinter;
+			break;
+		default:
+			platformMinter = webPoTokenMinter;
+			break;
+	}
+
+	const poToken = await platformMinter(PO_TOKEN_REQUEST_KEY, videoId, forceRefresh);
+	poTokenCacheStore.set({ videoId, poToken });
+	return poToken;
+}
+
 export async function continueVideoPlayerYTjs(videoId: string): Promise<{
 	dashUrl?: string;
 	adaptiveFormats: AdaptiveFormats[];
 	captions: Captions[];
 	hlsUrl?: string;
-	ytjs: import('$lib/api/model').Ytjs;
+	ytjs: import('#lib/api/model.js').Ytjs;
 }> {
 	const intermediate = videoIntermediateCache.get(videoId);
 	if (!intermediate) {
@@ -220,25 +250,47 @@ export async function continueVideoPlayerYTjs(videoId: string): Promise<{
 
 	videoIntermediateCache.delete(videoId);
 
-	const { innertube, video, clientPlaybackNonce, rawPlayerResponse } = intermediate;
+	const { innertube, clientPlaybackNonce } = intermediate;
+	let { video, rawPlayerResponse } = intermediate;
 
-	const requestKey = 'O43z0dpjhgX20SCx4KAo';
+	// WEB can return a playable live response with no DASH/HLS manifests.
+	// VISIONOS supplies the live manifests used by the upstream Shaka example.
+	if (
+		video.basic_info.is_live &&
+		!video.streaming_data?.dash_manifest_url &&
+		!video.streaming_data?.hls_manifest_url
+	) {
+		const livePlayerResponse = await innertube.actions.execute('/player', {
+			videoId,
+			client: 'VISIONOS',
+			contentCheckOk: true,
+			racyCheckOk: true,
+			playbackContext: {
+				contentPlaybackContext: {
+					signatureTimestamp: innertube.session.player?.signature_timestamp
+				}
+			}
+		});
+		const liveVideo = new YT.VideoInfo(
+			[livePlayerResponse],
+			innertube.actions,
+			clientPlaybackNonce
+		);
+		if (liveVideo.playability_status?.status !== 'OK') {
+			throw new Error(liveVideo.playability_status?.reason || 'Live stream is unavailable');
+		}
+		if (
+			!liveVideo.streaming_data?.dash_manifest_url &&
+			!liveVideo.streaming_data?.hls_manifest_url
+		) {
+			throw new Error('No DASH or HLS manifest was provided for this live video');
+		}
 
-	let platformMinter: (requestKey: string, visitorData: string) => Promise<string>;
-
-	switch (Capacitor.getPlatform()) {
-		case 'electron':
-			platformMinter = window.electronAPI.generatePoToken;
-			break;
-		case 'android':
-			platformMinter = androidPoTokenMinter;
-			break;
-		default:
-			platformMinter = webPoTokenMinter;
-			break;
+		video = liveVideo;
+		rawPlayerResponse = livePlayerResponse;
 	}
 
-	poTokenCacheStore.set(await platformMinter(requestKey, videoId));
+	const poToken = await mintPoTokenForVideo(videoId);
 
 	let dashUri: string | undefined;
 
@@ -297,7 +349,7 @@ export async function continueVideoPlayerYTjs(videoId: string): Promise<{
 		const url = new URL(caption.base_url);
 
 		url.searchParams.set('potc', '1');
-		url.searchParams.set('pot', get(poTokenCacheStore) ?? '');
+		url.searchParams.set('pot', poToken);
 		url.searchParams.set('c', innertube.session.context.client.clientName);
 		url.searchParams.set('fmt', 'vtt');
 

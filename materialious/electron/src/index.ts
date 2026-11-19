@@ -1,8 +1,6 @@
+import { loginInvidious, type InvidiousCredentials } from '@materialious/shared/invidious';
 import type { CapacitorElectronConfig } from '@capacitor-community/electron';
-import {
-	getCapacitorElectronConfig,
-	setupElectronDeepLinking
-} from '@capacitor-community/electron';
+import { getCapacitorElectronConfig } from '@capacitor-community/electron';
 import { mintPoTokenInJSDOM } from '@materialious/shared/jsdom';
 import {
 	createDownload,
@@ -30,13 +28,6 @@ const capacitorFileConfig: CapacitorElectronConfig = getCapacitorElectronConfig(
 // Initialize our app. You can pass menu templates into the app here.
 // const myCapacitorApp = new ElectronCapacitorApp(capacitorFileConfig);
 const myCapacitorApp = new ElectronCapacitorApp(capacitorFileConfig);
-
-// If deeplinking is enabled then we will set it up here.
-if (capacitorFileConfig.electron?.deepLinkingEnabled) {
-	setupElectronDeepLinking(myCapacitorApp, {
-		customProtocol: capacitorFileConfig.electron.deepLinkingCustomProtocol ?? 'mycapacitorapp'
-	});
-}
 
 // If we are in Dev mode, use the file watcher components.
 if (electronIsDev) {
@@ -83,9 +74,27 @@ app.on('activate', async function () {
 });
 
 // Place all ipc or other electron api calls and custom functionality under this line
-ipcMain.handle('generatePoToken', async (_, requestKey: string, visitorData: string) => {
-	return await mintPoTokenInJSDOM(requestKey, visitorData);
+ipcMain.handle('loginInvidious', async (event, credentials: InvidiousCredentials) => {
+	if (event.sender !== myCapacitorApp.getMainWindow().webContents) {
+		throw new Error('Unknown login caller');
+	}
+	if (
+		!credentials ||
+		typeof credentials.instance !== 'string' ||
+		typeof credentials.username !== 'string' ||
+		typeof credentials.password !== 'string'
+	) {
+		throw new Error('Invalid login request');
+	}
+	return loginInvidious(credentials);
 });
+
+ipcMain.handle(
+	'generatePoToken',
+	async (_, requestKey: string, visitorData: string, forceRefresh = false) => {
+		return await mintPoTokenInJSDOM(requestKey, visitorData, forceRefresh);
+	}
+);
 
 ipcMain.handle('setAllowInsecureSSL', async (_, allow) => {
 	allowInsecureSSL = allow;

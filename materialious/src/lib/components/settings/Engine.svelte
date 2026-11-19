@@ -1,13 +1,13 @@
 <script lang="ts">
-	import { _ } from '$lib/i18n';
+	import { _ } from '#lib/i18n/index';
 	import {
 		engineCooldownYTStore,
 		engineCullYTStore,
 		engineFallbacksStore,
 		engineMaxConcurrentChannelsStore,
 		backendInUseStore
-	} from '$lib/store';
-	import { useEngineFallback, type EngineFallback } from '$lib/api/misc';
+	} from '#lib/store';
+	import { useEngineFallback, type EngineFallback } from '#lib/api/misc';
 	import { get } from 'svelte/store';
 
 	const engineFallbacks: EngineFallback[] = [
@@ -76,9 +76,11 @@
 			oninput={(event: Event) => {
 				engineMaxConcurrentChannelsStore.set(Number((event.target as HTMLInputElement).value));
 			}}
-			value={$engineMaxConcurrentChannelsStore}
+			value={Math.min(4, $engineMaxConcurrentChannelsStore)}
 			name="concurrent"
 			type="number"
+			min="1"
+			max="4"
 		/>
 		<label for="concurrent">{$_('layout.backendEngine.concurrent')}</label>
 	</div>

@@ -1,22 +1,26 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { isAndroidTv, unsafeRandomItem } from '$lib/utils';
-	import { cleanNumber } from '$lib/numbers';
-	import { playlistSettingsStore } from '$lib/store';
-	import { _ } from '$lib/i18n';
-	import ItemsList from '$lib/components/layout/ItemsList.svelte';
-	import Share from '$lib/components/Share.svelte';
-	import PlaylistManager from '$lib/components/PlaylistManager.svelte';
+	import { resolveWatchPath } from '#lib/paths';
+	import { isAndroidTv, unsafeRandomItem } from '#lib/utils';
+	import { cleanNumber } from '#lib/numbers';
+	import { playlistSettingsStore } from '#lib/store';
+	import { _ } from '#lib/i18n/index';
+	import ItemsList from '#lib/components/layout/ItemsList.svelte';
+	import { isMaterialiousPlaylist } from '#lib/api/backend/playlist';
+	import Share from '#lib/components/Share.svelte';
+	import PlaylistManager from '#lib/components/PlaylistManager.svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import type { VideoWatchHistory } from '$lib/api/model.js';
-	import { getWatchHistory } from '$lib/api/index.js';
-	import PageLoading from '$lib/components/PageLoading.svelte';
+	import type { VideoWatchHistory } from '#lib/api/model';
+	import { getWatchHistory } from '#lib/api/index';
+	import PageLoading from '#lib/components/PageLoading.svelte';
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	let { data = $bindable() }: { data: any } = $props();
 	let loaded = $state(false);
+	let multipleActions = $state(false);
 	let playlist: any = $state(null);
+
+	const slug = $derived(page.params.slug as string);
 
 	data.streamed.details?.then((result: any) => {
 		playlist = result;
@@ -40,27 +44,9 @@
 		}
 
 		if (lastHistory.length > 0) {
-			goto(
-				resolve(
-					isAndroidTv()
-						? `/tv/[videoId]?playlist=${playlist.info.playlistId}`
-						: `/watch/[videoId]?playlist=${playlist.info.playlistId}`,
-					{
-						videoId: lastHistory[0].videoId
-					}
-				)
-			);
+			goto(resolveWatchPath(lastHistory[0].videoId, playlist.info.playlistId));
 		} else {
-			goto(
-				resolve(
-					isAndroidTv()
-						? `/tv/[videoId]?playlist=${playlist.info.playlistId}`
-						: `/watch/[videoId]?playlist=${playlist.info.playlistId}`,
-					{
-						videoId: playlist.videos[0].videoId
-					}
-				)
-			);
+			goto(resolveWatchPath(playlist.videos[0].videoId, playlist.info.playlistId));
 		}
 	}
 </script>
@@ -79,13 +65,9 @@
 				</button>
 
 				<a
-					href={resolve(
-						isAndroidTv()
-							? `/tv/[playlistId]?playlist=${playlist.info.playlistId}`
-							: `/watch/[playlistId]?playlist=${playlist.info.playlistId}`,
-						{
-							playlistId: unsafeRandomItem(playlist.videos).videoId
-						}
+					href={resolveWatchPath(
+						unsafeRandomItem(playlist.videos).videoId,
+						playlist.info.playlistId
 					)}
 					onclick={() =>
 						playlistSettingsStore.set({
@@ -123,33 +105,48 @@
 						buttonIcon="content_copy"
 						buttonText={$_('playlist.cloneToPlaylist')}
 					/>
+					<button
+						class="surface-container-highest"
+						aria-label="Bulk actions"
+						aria-pressed={multipleActions}
+						onclick={() => (multipleActions = !multipleActions)}
+					>
+						<i>checklist</i><span class="m l">Bulk actions</span>
+					</button>
 				{/if}
-				<Share
-					iconOnly={false}
-					shares={[
-						{
-							type: 'materialious',
-							path: resolve('/playlist/[playlistId]', { playlistId: page.params.slug })
-						},
-						{
-							type: 'invidious',
-							path: `/playlist?list=${page.params.slug}`
-						},
-						{
-							type: 'invidious redirect',
-							path: `/playlist?list=${page.params.slug}`
-						},
-						{
-							type: 'youtube',
-							path: `/playlist?list=${page.params.slug}`
-						}
-					]}
-				/>
+				{#if !isMaterialiousPlaylist(slug)}
+					<Share
+						iconOnly={false}
+						shares={[
+							{
+								type: 'materialious',
+								path: resolve('/(app)/playlist/[slug]', { slug })
+							},
+							{
+								type: 'invidious',
+								path: `/playlist?list=${slug}`
+							},
+							{
+								type: 'invidious redirect',
+								path: `/playlist?list=${slug}`
+							},
+							{
+								type: 'youtube',
+								path: `/playlist?list=${slug}`
+							}
+						]}
+					/>
+				{/if}
 			</nav>
 		{/if}
 	</article>
 
 	<div class="space"></div>
 
-	<ItemsList items={playlist.videos} playlistId={playlist.info.playlistId} />
+	<ItemsList
+		items={playlist.videos}
+		playlistId={playlist.info.playlistId}
+		bind:multipleActions
+		showActionButton={false}
+	/>
 {/if}

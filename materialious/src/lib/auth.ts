@@ -9,6 +9,7 @@ import {
 	invidiousInstanceStore,
 	materialiousBackendStore,
 	playlistCacheStore,
+	personalPlaylistsCacheStore,
 	rawMasterKeyStore,
 	searchCacheStore
 } from './store';
@@ -28,17 +29,18 @@ export function clearCaches() {
 	feedCacheStore.set({});
 	searchCacheStore.set({});
 	playlistCacheStore.set({});
+	personalPlaylistsCacheStore.set(null);
 	channelCacheStore.set({});
 }
 
 export function authProtected() {
 	if (!get(invidiousAuthStore) && !isYTBackend()) {
-		goto(resolve('/', {}), { replaceState: true });
+		goto(resolve('/(app)'), { replace: true });
 	}
 }
 
 async function removeAuthFromBackend() {
-	if (!get(rawMasterKeyStore)) return;
+	if (!isMaterialiousAccountActive()) return;
 
 	await deleteKeyValue('authToken');
 }
@@ -121,17 +123,25 @@ export async function goToInvidiousLogin() {
 		path.search = searchParams.toString();
 		await Browser.open({ url: path.toString() });
 	} else {
-		searchParams.set('callback_url', `${location.origin}${resolve('/invidious/auth', {})}`);
+		searchParams.set(
+			'callback_url',
+			`${location.origin}${resolve('/(app)/login/invidious/callback')}`
+		);
 		path.search = searchParams.toString();
 		document.location.href = path.toString();
 	}
 }
 
+export async function logout() {
+	await (isMaterialiousAccountActive() ? materialiousLogout : invidiousLogout)();
+}
+
 export async function invidiousLogout() {
 	invidiousAuthStore.set(null);
+	clearCaches();
 	await removeAuthFromBackend();
 
-	goto(resolve('/', {}));
+	goto(resolve('/(app)'));
 }
 
 export async function materialiousLogout() {
@@ -148,7 +158,7 @@ export async function materialiousLogout() {
 		clearCaches();
 	}
 
-	goto(resolve('/', {}));
+	goto(resolve('/(app)'));
 }
 
 export async function setMaterialiousBackend(

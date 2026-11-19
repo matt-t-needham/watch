@@ -129,7 +129,16 @@
             "fontFamily": "フォント",
             "opacity": "不透明度",
             "subtitleOffset": "字幕のタイミング",
-            "textShadow": "テキストの影"
+            "textShadow": "テキストの影",
+            "play": "再生",
+            "pause": "一時停止",
+            "subtitles": "字幕",
+            "playbackControls": "再生コントロール",
+            "endsAt": "{{time}} で終了",
+            "videoInfo": "動画情報",
+            "timeline": "タイムライン",
+            "positionOf": "{{elapsed}} / {{total}}",
+            "loadingCaptions": "字幕を読み込み中"
         },
         "pauseTimerFinished": "一時停止タイマーが終了しました",
         "pauseOnNetworkChange": "Wi-Fiネットワークの変更により、動画が一時停止しました",
@@ -142,7 +151,14 @@
         "downloadVideoAudio": "動画と音声",
         "downloadFormat": "フォーマット",
         "downloadType": "ダウンロードタイプ",
-        "defaultSubtitleLanguage": "デフォルトの字幕言語"
+        "defaultSubtitleLanguage": "デフォルトの字幕言語",
+        "playbackErrorTitle": "再生に失敗しました",
+        "playbackErrorSabr": "YouTube の SABR ストリームを再生できませんでした。再生セッションまたは動画ソースの有効期限が切れている可能性があります。",
+        "playbackErrorInvidious": "Invidious または関連サーバーから動画ソースを読み込めませんでした。",
+        "playbackErrorYoutubeJs": "ローカルの YouTube.js 動画ソースを読み込めませんでした。",
+        "playbackErrorUnknown": "予期せぬエラーが発生したため、動画を再生できませんでした。",
+        "retry": "再試行",
+        "retrying": "再試行中…"
     },
     "layout": {
         "interface": "外観",
@@ -214,7 +230,11 @@
             "lockOrientation": "アスペクト比に合わせて向きを固定",
             "defaultPlaybackSpeed": "既定の再生速度",
             "playerStatistics": "最初からプレイヤー統計情報を表示",
-            "networkChangePause": "ネットワーク変更時に一時停止"
+            "networkChangePause": "ネットワーク変更時に一時停止",
+            "fitScreenByDefault": "デフォルトで画面に合わせる",
+            "androidAutoPip": "アプリの終了時に自動的に PiP モードに入る",
+            "autoFullscreen": "動画を自動的に全画面表示",
+            "rotateOnTilt": "デバイスを傾けたときに、全画面表示の動画を回転"
         },
         "bookmarklet": "ブックマーク",
         "instanceUrl": "インスタンスのURL",
@@ -290,7 +310,8 @@
             "exportToClipboard": "クリップボードへエクスポート",
             "exportToFile": "ファイルへエクスポート",
             "importFromFile": "ファイルからインポート",
-            "exportToShareUrl": "共有URLにエクスポート"
+            "exportToShareUrl": "共有URLにエクスポート",
+            "youtubeSubscriptionsGuide": "YouTube のチャンネル登録者をエクスポートする方法"
         },
         "preserveTranslation": "オリジナルの翻訳を使用する",
         "binds": {
@@ -314,7 +335,9 @@
             "tab2": "タブ 2",
             "tab3": "タブ 3",
             "tab4": "タブ 4",
-            "reset": "初期設定に戻す"
+            "reset": "初期設定に戻す",
+            "volumeUp": "音量を上げる",
+            "volumeDown": "音量を下げる"
         },
         "showMobileBackButton": "画面上のナビゲーションコントロール",
         "admin": "管理者",
@@ -330,7 +353,14 @@
         "passwordsDoNotMatch": "パスワードが一致しません",
         "passwordResetFailed": "パスワードのリセットに失敗しました。現在のパスワードを確認してください。",
         "passwordResetSuccess": "パスワードのリセットに成功しました",
-        "changePassword": "パスワードの変更"
+        "changePassword": "パスワードの変更",
+        "hideShorts": "ショート動画を隠す",
+        "disableSettingsSync": "このデバイスでは設定を同期しない",
+        "disableSettingsSyncDescription": "このデバイスの設定は、アカウントから更新したりアカウントに送信したりせずローカルに保存する。",
+        "exportSettingsToAccount": "設定をアカウントにエクスポート",
+        "importSettingsFromAccount": "アカウントから設定をインポート",
+        "settingsExportedToAccount": "アカウントにエクスポートされた設定",
+        "settingsImportedFromAccount": "アカウントからインポートされた設定"
     },
     "subscribe": "チャンネル登録",
     "invidiousBlockWarning": "Invidious は、現在Googleにブロックされています。このインスタンスで動画が読み込めない場合、{android} 版または {desktop} 版の Materialious でこのインスタンスを使用し、動画取得を直接行う代替接続を使ってください。",
@@ -392,7 +422,8 @@
         "shareRoom": "ルームを共有",
         "leaveRoom": "ルームから退出",
         "userJoin": "ユーザーがルームに参加しました",
-        "userLeft": "ユーザーがルームから退出しました"
+        "userLeft": "ユーザーがルームから退出しました",
+        "description": "動画を同期して一緒に見る。"
     },
     "markAs": {
         "watched": "視聴済みにする",
@@ -413,7 +444,7 @@
     "subscribeFailed": "登録に失敗しました",
     "unsubscribeFailed": "登録解除に失敗しました",
     "materialiousBackend": "Materialious バックエンド",
-    "materialiousBackendUrl": "Materialious URL",
+    "materialiousBackendUrl": "Materialious インスタンス",
     "materialiousLoginButton": "Materialious アカウントでログイン",
     "materialiousLogout": "Materialious アカウントからログアウト",
     "downloadedCompletedAndroid": "ファイルが Android のダウンロードフォルダーに保存されました",
@@ -441,5 +472,50 @@
         "sent": "サインイン情報を送信しました。",
         "expiresIn": "{{seconds}}秒後に有効期限が切れます",
         "done": "完了"
-    }
+    },
+    "loginWithPassword": "パスワードでログイン",
+    "loginWithQuickConnect": "クイックコネクトでログイン",
+    "invidiousInstance": "不明なインスタンス",
+    "companionRequired": {
+        "title": "ブラウザ用コンパニオンアプリが必要です",
+        "description": "この Materialious のインスタンスは、ブラウザ用拡張機能、または Android およびデスクトップアプリと組み合わせてのみ動作します。",
+        "installInstruction": "対応する拡張機能をインストールして有効にするか、以下のアプリをダウンロードしてください。",
+        "setupTitle": "このインスタンスをブラウザ拡張機能に追加する",
+        "setupStepOne": "ブラウザのツールバーにある「Materialious Companion」のアイコンを選択してください。",
+        "setupStepTwo": "「インスタンスを追加」フィールドに、次のURLを入力してください：",
+        "setupStepThree": "「追加」を選択し、ブラウザからの権限リクエストを許可してください。",
+        "copyUrl": "URLをコピー",
+        "instanceUrl": "インスタンスの URL",
+        "downloadTitle": "Materialious をダウンロード",
+        "windows": "Windows",
+        "windowsX64": "Windows x64",
+        "windowsX32": "Windows x32",
+        "android": "Android",
+        "fDroid": "F-Droid",
+        "izzyOnDroid": "IzzyOnDroid",
+        "apkUniversal": "APK Universal",
+        "apkX64": "APK x64",
+        "apkArm64": "APK ARM64",
+        "obtainium": "Obtainium",
+        "linux": "Linux",
+        "flathub": "Flathub",
+        "snap": "Snap",
+        "debianUbuntu": "Debian/Ubuntu",
+        "fedoraOpenSuse": "Fedora/OpenSuse",
+        "appImage": "AppImage",
+        "tarball": "Tarball"
+    },
+    "transcriptAutoScroll": "自動スクロール",
+    "transcriptLoading": "文字起こしの読み込み中",
+    "transcriptLoadError": "文字起こしを読み込めませんでした。言語を選択して、もう一度試してください。",
+    "queue": {
+        "header": "次へ",
+        "empty": "キューは空です。",
+        "add": "キューに追加",
+        "remove": "キューから削除",
+        "moveUp": "キュー内で上に移動",
+        "moveDown": "キュー内で下に移動"
+    },
+    "invidiousSessionExpired": "Invidiousのセッションが無効になりました。再度ログインしてください。",
+    "invidiousCheckFailed": "Invidiousセッションを確認できないか、通知を読み込めませんでした。もう一度試してください。"
 }

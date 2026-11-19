@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { _ } from '$lib/i18n';
-	import { materialiousBackendStore, rawMasterKeyStore } from '$lib/store';
-	import { keyCodeMap } from '$lib/utils';
+	import LogoutButton from './LogoutButton.svelte';
+	import { _ } from '#lib/i18n/index';
+	import { materialiousBackendStore, rawMasterKeyStore } from '#lib/store';
+	import { isMobile, keyCodeMap } from '#lib/utils';
 	import { getNextFocus } from '@bbc/tv-lrud-spatial';
 	import {
 		getSettingsTabs,
@@ -69,7 +70,7 @@
 		<button class="circle transparent" data-ui="#dialog-settings"><i>close</i></button>
 	</nav>
 
-	<div style="height: 100%;">
+	<div class="settings-body">
 		<nav class="wrap s">
 			{#if tabs}
 				{@const currentTab = tabs.find((tab) => tab.id === activeTab)}
@@ -111,37 +112,41 @@
 				{/if}
 			{/if}
 		</nav>
-
 		<div class="s">
 			<div class="space"></div>
 			<div class="divider"></div>
 		</div>
 
 		<div class="grid">
-			<div class="s12 m4 l4 m l">
-				<div
-					class="categories padding"
-					bind:this={triggerListElement}
-					onkeydown={(e) => handleTriggerKeyDown(e, triggerListElement)}
-					role="tablist"
-					aria-orientation="vertical"
-				>
-					{#each tabs as tab (tab)}
-						<button
-							id="tab-trigger-{tab.id}"
-							class:active={isActive(tab.id)}
-							class:surface-container-lowest={isActive(tab.id)}
-							class:surface-container-highest={!isActive(tab.id)}
-							role="tab"
-							aria-selected={isActive(tab.id)}
-							tabindex="0"
-							onclick={() => (activeTab = tab.id)}
-						>
-							<i>{tab.icon}</i>
-							<span>{getTabLabel(tab, $_)}</span>
-						</button>
-						<div class="space"></div>
-					{/each}
+			<div class="settings-sidebar s12 m4 l4 m l">
+				<div class="padding">
+					<div
+						class="categories"
+						bind:this={triggerListElement}
+						onkeydown={(e) => handleTriggerKeyDown(e, triggerListElement)}
+						role="tablist"
+						aria-orientation="vertical"
+					>
+						{#each tabs as tab (tab)}
+							<button
+								id="tab-trigger-{tab.id}"
+								class:active={isActive(tab.id)}
+								class:surface-container-lowest={isActive(tab.id)}
+								class:surface-container-highest={!isActive(tab.id)}
+								role="tab"
+								aria-selected={isActive(tab.id)}
+								tabindex="0"
+								onclick={() => (activeTab = tab.id)}
+							>
+								<i>{tab.icon}</i>
+								<span>{getTabLabel(tab, $_)}</span>
+							</button>
+							<div class="space"></div>
+						{/each}
+					</div>
+					{#if !isMobile()}
+						<LogoutButton fullWidth closeSettings />
+					{/if}
 				</div>
 			</div>
 			<div class="s12 m8 l8">
@@ -160,25 +165,41 @@
 <style>
 	#dialog-settings {
 		width: 800px;
+		height: 80vh;
+		max-height: 80vh;
+		display: flex;
+		flex-direction: column;
 	}
 
-	.categories {
-		position: sticky;
-		top: 0;
+	.settings-body {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+		min-height: 0;
+	}
+
+	.settings-sidebar {
 		height: 100%;
-		overflow: hidden;
-		height: fit-content;
+		overflow-y: auto;
 	}
 
 	.settings {
-		height: 800px;
+		height: 100%;
+		min-height: 0;
+		box-sizing: border-box;
 		overflow-y: auto;
 		padding-right: 10px;
 	}
 
 	.grid {
+		flex: 1;
 		margin-top: 0 !important;
-		height: 100% !important;
+		min-height: 0;
+		height: 0 !important;
+	}
+
+	.grid > div {
+		min-height: 0;
 	}
 
 	.grid .m,
@@ -198,8 +219,13 @@
 
 	@media screen and (max-width: 800px) {
 		#dialog-settings {
-			width: 100%;
-			height: 100%;
+			box-sizing: border-box;
+			width: 100vw;
+			height: 100vh;
+			height: 100dvh;
+			max-height: 100dvh;
+			min-height: 100dvh;
+			margin: 0;
 		}
 
 		.settings {

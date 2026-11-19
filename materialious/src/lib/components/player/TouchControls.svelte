@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { isMobile } from '$lib/utils';
-	import { playerDoubleTapSeek } from '$lib/player';
+	import { isMobile } from '#lib/utils';
+	import { playerDoubleTapSeek } from '#lib/player/index';
 	import { onDestroy } from 'svelte';
 
 	let {
@@ -103,6 +103,13 @@
 		height: 100%;
 	}
 
+	#player-center > .grid {
+		box-sizing: border-box;
+		block-size: 100%;
+		padding-bottom: 5rem;
+		grid-template-rows: minmax(0, 1fr);
+	}
+
 	.seek-double-click {
 		background-color: var(--secondary-container);
 		height: var(--video-player-height);
@@ -130,6 +137,6 @@
 		display: flex;
 		justify-content: center;
 		align-items: center;
-		height: var(--video-player-height);
+		height: 100%;
 	}
 </style>

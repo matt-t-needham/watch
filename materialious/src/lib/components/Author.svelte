@@ -1,17 +1,17 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { amSubscribed, deleteUnsubscribe, postSubscribe } from '$lib/api';
-	import type { Image } from '$lib/api/model';
-	import { getBestThumbnail, proxyGoogleImage } from '$lib/images';
-	import { isYTBackend } from '$lib/backend';
-	import { isAndroidTv, truncate } from '$lib/utils';
-	import { invidiousAuthStore } from '$lib/store';
-	import { _ } from '$lib/i18n';
-	import { localDb } from '$lib/dexie';
+	import { amSubscribed, deleteUnsubscribe, postSubscribe } from '#lib/api/index';
+	import type { Image } from '#lib/api/model';
+	import { getBestThumbnail, imageHandleCors, proxyGoogleImage } from '#lib/images';
+	import { isYTBackend } from '#lib/backend';
+	import { isAndroidTv, truncate } from '#lib/utils';
+	import { invidiousAuthStore } from '#lib/store';
+	import { _ } from '#lib/i18n/index';
+	import { localDb } from '#lib/dexie';
 	import { onMount } from 'svelte';
 	import { Avatar } from 'melt/builders';
 	import { mergeAttrs } from 'melt';
-	import { addToast } from '$lib/components/Toast.svelte';
+	import { addToast } from '#lib/components/Toast.svelte';
 
 	let {
 		channel,
@@ -60,11 +60,28 @@
 		}
 	}
 
-	const avatar = new Avatar({ src: proxyGoogleImage(getBestThumbnail(channel.authorThumbnails)) });
+	let avatarSrc = $state('');
+	const avatar = new Avatar({ src: () => avatarSrc });
+
+	$effect(() => {
+		const src = proxyGoogleImage(getBestThumbnail(channel.authorThumbnails));
+		let active = true;
+		avatarSrc = '';
+		imageHandleCors(src)
+			.then((url) => {
+				if (active) avatarSrc = url;
+			})
+			.catch(() => {
+				if (active) avatarSrc = '';
+			});
+		return () => {
+			active = false;
+		};
+	});
 </script>
 
 <nav>
-	<a href={resolve(`/channel/[authorId]`, { authorId: channel.authorId })}>
+	<a href={resolve('/(app)/channel/[slug]', { slug: channel.authorId })}>
 		<nav style="gap: 0.5em;">
 			<img class="circle" {...avatar.image} alt="Channel profile" />
 			<button

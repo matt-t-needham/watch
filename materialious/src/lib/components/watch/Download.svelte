@@ -1,20 +1,21 @@
 <script lang="ts">
 	import { Capacitor } from '@capacitor/core';
-	import { addToast } from '$lib/components/Toast.svelte';
+	import { addToast } from '#lib/components/Toast.svelte';
 	import {
 		getDownloadFormats,
 		isDownloadSupported,
 		startDownload,
 		type AvailableFormats,
 		type DownloadSelection
-	} from '$lib/api';
-	import { _ } from '$lib/i18n';
-	import { isOwnBackend } from '$lib/shared';
-	import type { VideoPlay } from '$lib/api/model';
+	} from '#lib/api/index';
+	import { _ } from '#lib/i18n/index';
+	import { isOwnBackend } from '#lib/shared/index';
+	import type { VideoPlay } from '#lib/api/model';
 	import { Progress } from 'melt/builders';
 	import { SvelteSet } from 'svelte/reactivity';
 	import ui from 'beercss';
 	import ISO6391 from 'iso-639-1';
+	import { PUBLIC_DOWNLOAD_DISABLED, PUBLIC_REQUIRE_BROWSER_COMPANION } from '$app/env/public';
 
 	let { video }: { video: VideoPlay } = $props();
 
@@ -101,7 +102,7 @@
 
 		return (compatible.length > 0 ? compatible : candidates)
 			.filter((format) => {
-				const key = `${format.language ?? 'x'}-${format.container}-${Math.round((format.bitrate ?? 0) / 1000)}`;
+				const key = `${format.audioTrackId ?? format.language ?? 'x'}-${format.container}-${Math.round((format.bitrate ?? 0) / 1000)}`;
 				if (seen.has(key)) return false;
 				seen.add(key);
 				return true;
@@ -131,13 +132,15 @@
 	});
 
 	function audioFormatKey(format: AvailableFormats['formats'][number]): string {
-		return `${format.itag}-${format.language ?? ''}-${format.container}-${Math.round((format.bitrate ?? 0) / 1000)}`;
+		return `${format.itag}-${format.audioTrackId ?? ''}-${format.language ?? ''}-${format.container}-${Math.round((format.bitrate ?? 0) / 1000)}`;
 	}
 
 	function audioLabel(format: AvailableFormats['formats'][number]): string {
 		const parts: string[] = [];
 
-		if (format.language) {
+		if (format.audioTrackName) {
+			parts.push(format.audioTrackName);
+		} else if (format.language) {
 			parts.push(ISO6391.getName(format.language) || format.language);
 		}
 		if (format.bitrate) parts.push(`${Math.round(format.bitrate / 1000)} kbps`);
@@ -173,6 +176,7 @@
 				type: 'audio',
 				itag: audioFormat?.itag,
 				language: audioFormat?.language ?? undefined,
+				audioTrackId: audioFormat?.audioTrackId,
 				format: selectedContainer
 			};
 		}
@@ -182,6 +186,7 @@
 			quality: selectedQuality,
 			itag: audioFormat?.itag,
 			language: audioFormat?.language ?? undefined,
+			audioTrackId: audioFormat?.audioTrackId,
 			format: selectedContainer,
 			codec: selectedContainer === 'webm' ? 'vp9' : 'avc1'
 		};
@@ -237,7 +242,7 @@
 	}
 </script>
 
-{#if isDownloadSupported()}
+{#if PUBLIC_DOWNLOAD_DISABLED !== 'true' && PUBLIC_REQUIRE_BROWSER_COMPANION !== 'true' && isDownloadSupported() && !video.liveNow}
 	<button
 		class="surface-container-highest"
 		onclick={onDownloadButtonClick}
@@ -363,7 +368,7 @@
 
 				<section class="download-section">
 					<h6 class="no-margin">{$_('player.downloadFormat')}</h6>
-					<div class="field suffix label border">
+					<div class="field suffix label surface-container-highest">
 						<select id="download-format" bind:value={selectedContainer}>
 							{#each containerOptions as container (container)}
 								<option value={container}>{container.toUpperCase()}</option>

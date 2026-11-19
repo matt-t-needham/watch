@@ -1,7 +1,37 @@
-import { env } from '$env/dynamic/public';
+import {
+	ANDROID_TV_BUILD,
+	APP_VERSION,
+	PUBLIC_DEFAULT_COMPANION_INSTANCE,
+	PUBLIC_DEFAULT_DEARROW_INSTANCE,
+	PUBLIC_DEFAULT_DEARROW_THUMBNAIL_INSTANCE,
+	PUBLIC_DEFAULT_INVIDIOUS_INSTANCE,
+	PUBLIC_DEFAULT_RETURNYTDISLIKES_INSTANCE,
+	PUBLIC_DEFAULT_SETTINGS,
+	PUBLIC_DEFAULT_SPONSERBLOCK_INSTANCE,
+	PUBLIC_PLAYER_ID,
+	PUBLIC_PROXY_DISABLED
+} from '$app/env/public';
+
+const publicEnv: Record<string, string | undefined> = {
+	ANDROID_TV_BUILD,
+	APP_VERSION,
+	DEFAULT_COMPANION_INSTANCE: PUBLIC_DEFAULT_COMPANION_INSTANCE,
+	DEFAULT_DEARROW_INSTANCE: PUBLIC_DEFAULT_DEARROW_INSTANCE,
+	DEFAULT_DEARROW_THUMBNAIL_INSTANCE: PUBLIC_DEFAULT_DEARROW_THUMBNAIL_INSTANCE,
+	DEFAULT_INVIDIOUS_INSTANCE: PUBLIC_DEFAULT_INVIDIOUS_INSTANCE,
+	DEFAULT_RETURNYTDISLIKES_INSTANCE: PUBLIC_DEFAULT_RETURNYTDISLIKES_INSTANCE,
+	DEFAULT_SETTINGS: PUBLIC_DEFAULT_SETTINGS,
+	DEFAULT_SPONSERBLOCK_INSTANCE: PUBLIC_DEFAULT_SPONSERBLOCK_INSTANCE,
+	PLAYER_ID: PUBLIC_PLAYER_ID,
+	PROXY_DISABLED: PUBLIC_PROXY_DISABLED
+};
 
 export function getPublicEnv(envName: string): string | undefined {
-	const envValue = env[`PUBLIC_${envName}`] ?? import.meta.env[`VITE_${envName}`];
+	// SvelteKit 3 normalizes unset PUBLIC_* variables to an empty string, so a
+	// nullish check isn't enough to fall back to the VITE_* placeholders used by
+	// the legacy Docker image (which are replaced at container start).
+	const envValue: string | undefined =
+		publicEnv[envName] || (import.meta.env[`VITE_${envName}`] as string | undefined);
 	if (envValue === '') return;
 	return envValue;
 }

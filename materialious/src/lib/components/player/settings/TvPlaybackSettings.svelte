@@ -7,8 +7,8 @@
 <script lang="ts">
 	import type shaka from 'shaka-player/dist/shaka-player.ui';
 	import { onDestroy, onMount } from 'svelte';
-	import { _ } from '$lib/i18n';
-	import { playerMatchFrameRateStore } from '$lib/stores/player';
+	import { _ } from '#lib/i18n';
+	import { playerMatchFrameRateStore } from '#lib/stores/player';
 	import {
 		activeVideoTrack,
 		chooseAutoQuality,
@@ -17,7 +17,7 @@
 		isAutoQuality,
 		qualityHeights,
 		tvRates
-	} from '$lib/player/tvPlayback';
+	} from '#lib/player/tvPlayback';
 
 	let {
 		player,

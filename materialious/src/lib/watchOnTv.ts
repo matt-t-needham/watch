@@ -12,12 +12,12 @@
 // goes through the app's local proxy, which supplies the CORS headers a
 // cross-origin EventSource would lack.
 
-import { addOrUpdateKeyValue, getKeyValue } from '$lib/api/backend/keyvalue';
-import { backendFetch } from '$lib/api/backend/request';
-import { isMaterialiousAccountActive } from '$lib/backend';
-import { watchPartyEventSchema } from '$lib/watchParty';
-import { addToast } from '$lib/components/Toast.svelte';
-import { _ } from '$lib/i18n';
+import { addOrUpdateKeyValue, getKeyValue } from '#lib/api/backend/keyvalue';
+import { backendFetch } from '#lib/api/backend/request';
+import { isMaterialiousAccountActive } from '#lib/backend';
+import { watchPartyEventSchema } from '#lib/watchParty';
+import { addToast } from '#lib/components/Toast.svelte';
+import { _ } from '#lib/i18n';
 import { get } from 'svelte/store';
 
 const ROOM_KEY = 'bixTvRoom';

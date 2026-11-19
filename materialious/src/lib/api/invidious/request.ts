@@ -1,10 +1,12 @@
-import { getUserLocale } from '$lib/i18n';
+import { Capacitor } from '@capacitor/core';
+import { getUserLocale } from '#lib/i18n/index';
+import { normalizeContentRegion } from '#lib/regions';
 import {
 	interfacePreserveTranslation,
 	interfaceRegionStore,
 	invidiousAuthStore,
 	invidiousInstanceStore
-} from '$lib/store';
+} from '#lib/store';
 import { get } from 'svelte/store';
 
 export function buildPath(path: string): URL {
@@ -12,7 +14,7 @@ export function buildPath(path: string): URL {
 }
 
 export function setLocale(url: URL): URL {
-	const region = get(interfaceRegionStore);
+	const region = normalizeContentRegion(get(interfaceRegionStore));
 	if (region) {
 		url.searchParams.set('region', region);
 	}
@@ -28,10 +30,12 @@ export function setLocale(url: URL): URL {
 export class HTTPError {
 	msg: string;
 	response: Response;
+	apiError?: string;
 
-	constructor(msg: string, response: Response) {
+	constructor(msg: string, response: Response, apiError?: string) {
 		this.msg = msg;
 		this.response = response;
+		this.apiError = apiError;
 	}
 
 	toString() {
@@ -42,10 +46,12 @@ export class HTTPError {
 export async function fetchErrorHandle(response: Response): Promise<Response> {
 	if (!response.ok) {
 		let message = 'Internal error';
+		let apiError: string | undefined;
 
 		// Attempt to parse error.
 		try {
 			const json = await response.json();
+			if (typeof json.error === 'string') apiError = json.error;
 			message = json.errorBacktrace || json.error || json.message;
 		} catch {
 			// Continue regardless of error
@@ -53,7 +59,8 @@ export async function fetchErrorHandle(response: Response): Promise<Response> {
 
 		throw new HTTPError(
 			`${response.status} - ${response.statusText}\n${decodeURIComponent(response.url)}\n${message}`,
-			response
+			response,
+			apiError
 		);
 	}
 
@@ -61,9 +68,15 @@ export async function fetchErrorHandle(response: Response): Promise<Response> {
 }
 
 export function buildAuthHeaders(): { headers: Record<string, string> } {
-	const authToken = get(invidiousAuthStore)?.token ?? '';
+	const auth = get(invidiousAuthStore);
+	if (auth?.instance && auth.instance !== get(invidiousInstanceStore)?.replace(/\/$/, '')) {
+		return { headers: {} };
+	}
+	const authToken = auth?.token ?? '';
 	if (authToken.startsWith('SID=')) {
-		return { headers: { __sid_auth: authToken } };
+		// Browser fetch cannot set Cookie; the platform transport translates this header.
+		const header = Capacitor.getPlatform() === 'android' ? '__sid_auth' : 'X-Invidious-SID';
+		return { headers: { [header]: authToken } };
 	} else {
 		return { headers: { Authorization: `Bearer ${authToken}` } };
 	}

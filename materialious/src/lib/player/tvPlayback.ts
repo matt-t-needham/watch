@@ -2,8 +2,8 @@
 // (TvPlaybackSettings.svelte) and the living-room remote (bixRemote.ts), so both
 // offer the same options and apply them the same way.
 import type shaka from 'shaka-player/dist/shaka-player.ui';
-import { setActiveVideoTrack } from '$lib/components/player/settings/Settings.svelte';
-import { playbackRates } from '$lib/player/index';
+import { setActiveVideoTrack } from '#lib/components/player/settings/Settings.svelte';
+import { playbackRates } from '#lib/player/index';
 
 // The TV is no place for 4x; keep the useful range.
 export const tvRates = playbackRates.filter((rate) => rate >= 0.5 && rate <= 2);

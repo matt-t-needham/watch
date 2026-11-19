@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { type Writable } from 'svelte/store';
-import { bixTvRoomStore } from '$lib/stores/backend';
+import { bixTvRoomStore } from '#lib/stores/backend';
 
 import {
 	darkModeStore,
@@ -11,6 +11,7 @@ import {
 	interfaceAmoledTheme,
 	interfaceAutoExpandComments,
 	interfaceAutoExpandDesc,
+	interfaceHideShorts,
 	interfaceDefaultPage,
 	interfaceDisplayThumbnailAvatars,
 	interfaceForceCase,
@@ -24,6 +25,7 @@ import {
 	playerProxyVideosStore,
 	playerSavePlaybackPositionStore,
 	playerTheatreModeByDefaultStore,
+	playerFitScreenByDefaultStore,
 	returnYTDislikesInstanceStore,
 	returnYtDislikesStore,
 	showWarningStore,
@@ -47,7 +49,10 @@ import {
 	interfaceDisableAutoUpdate,
 	interfaceAndroidUseNativeShare,
 	playerAndroidPauseOnNetworkChange,
+	playerAndroidAutoFullscreen,
+	playerAndroidRotateOnTilt,
 	playerAndroidLockOrientation,
+	playerAndroidAutoPip,
 	playerYouTubeJsFallback,
 	playerYouTubeJsAlways,
 	interfaceSearchHistoryEnabled,
@@ -60,9 +65,9 @@ import {
 	interfacePreserveTranslation,
 	interfaceMobileBackButtonStore,
 	subtitleSettings
-} from '$lib/store';
-import { isOwnBackend } from '$lib/shared';
-import { SUPPORTED_THEME_KEYS } from '$lib/shared/theme';
+} from '#lib/store';
+import { isOwnBackend } from '#lib/shared/index';
+import { SUPPORTED_THEME_KEYS } from '#lib/shared/theme';
 
 export type PersistedStore<T> = {
 	name: string;
@@ -82,7 +87,8 @@ export const zChapterMode = z.enum(['automatic', 'manual', 'timeline']);
 export const zChapterModeRecord = z.record(z.string(), zChapterMode.optional());
 export const zAuth = z.object({
 	username: z.string(),
-	token: z.string()
+	token: z.string(),
+	instance: z.string().optional()
 });
 export const zThemeColors = z.record(
 	z.string().refine((val) => SUPPORTED_THEME_KEYS.includes(val), {
@@ -137,6 +143,11 @@ export const persistedStores: PersistedStore<any>[] = [
 	{
 		name: 'savePlaybackPosition',
 		store: playerSavePlaybackPositionStore,
+		schema: zBoolean
+	},
+	{
+		name: 'fitScreenByDefault',
+		store: playerFitScreenByDefaultStore,
 		schema: zBoolean
 	},
 	{
@@ -207,6 +218,11 @@ export const persistedStores: PersistedStore<any>[] = [
 	{
 		name: 'autoExpandDesc',
 		store: interfaceAutoExpandDesc,
+		schema: zBoolean
+	},
+	{
+		name: 'hideShorts',
+		store: interfaceHideShorts,
 		schema: zBoolean
 	},
 	{
@@ -399,8 +415,26 @@ function registerBackendStores() {
 		excludeFromBookmarklet: true
 	});
 	persistedStores.push({
+		name: 'androidAutoFullscreen',
+		store: playerAndroidAutoFullscreen,
+		schema: zBoolean,
+		excludeFromBookmarklet: true
+	});
+	persistedStores.push({
+		name: 'androidRotateOnTilt',
+		store: playerAndroidRotateOnTilt,
+		schema: zBoolean,
+		excludeFromBookmarklet: true
+	});
+	persistedStores.push({
 		name: 'androidLockOrientation',
 		store: playerAndroidLockOrientation,
+		schema: zBoolean,
+		excludeFromBookmarklet: true
+	});
+	persistedStores.push({
+		name: 'androidAutoPip',
+		store: playerAndroidAutoPip,
 		schema: zBoolean,
 		excludeFromBookmarklet: true
 	});

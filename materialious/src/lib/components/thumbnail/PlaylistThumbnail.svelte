@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { getBestThumbnail, imageHandleCors } from '$lib/images';
+	import { getBestThumbnail, imageHandleCors } from '#lib/images';
 	import { resolve } from '$app/paths';
-	import { letterCase } from '$lib/letterCasing';
-	import { _ } from '$lib/i18n';
-	import type { Playlist, PlaylistPage } from '$lib/api/model';
-	import { truncate } from '$lib/utils';
+	import { letterCase } from '#lib/letterCasing';
+	import { _ } from '#lib/i18n/index';
+	import type { Playlist, PlaylistPage } from '#lib/api/model';
+	import { truncate } from '#lib/utils';
 	import { Avatar } from 'melt/builders';
 	import { mergeAttrs } from 'melt';
 
@@ -14,7 +14,7 @@
 
 	let { playlist }: Props = $props();
 
-	const playlistLink = resolve('/playlist/[playlistId]', { playlistId: playlist.playlistId });
+	const playlistLink = resolve('/(app)/playlist/[slug]', { slug: playlist.playlistId });
 
 	function getThumbnailSrc(): string {
 		if (playlist.videos && playlist.videos.length > 0) {
@@ -25,8 +25,24 @@
 	}
 
 	let thumbnailSrc = $state(getThumbnailSrc());
+	let thumbnailDisplaySrc = $state('');
 
-	const thumbnail = new Avatar({ src: imageHandleCors(thumbnailSrc) });
+	const thumbnail = new Avatar({ src: () => thumbnailDisplaySrc });
+
+	$effect(() => {
+		const src = thumbnailSrc;
+		let active = true;
+		imageHandleCors(src)
+			.then((displaySrc) => {
+				if (active) thumbnailDisplaySrc = displaySrc;
+			})
+			.catch(() => {
+				if (active) thumbnailDisplaySrc = '';
+			});
+		return () => {
+			active = false;
+		};
+	});
 </script>
 
 <a href={playlistLink} style="width: 100%; overflow: hidden;min-height:100px;" class="wave">
@@ -35,6 +51,8 @@
 		{...mergeAttrs(thumbnail.image, {
 			style: 'max-width: 100%;height: 100%;'
 		})}
+		loading="lazy"
+		decoding="async"
 		alt="Thumbnail for playlist"
 	/>
 	<div {...thumbnail.fallback} class="secondary-container responsive" style="height: 200px;"></div>
@@ -51,7 +69,7 @@
 			<a href={playlistLink}><div class="bold">{letterCase(truncate(playlist.title))}</div></a>
 			<div>
 				{#if playlist.authorId}
-					<a href={resolve('/channel/[authorId]', { authorId: playlist.authorId })}
+					<a href={resolve('/(app)/channel/[slug]', { slug: playlist.authorId })}
 						>{playlist.author}</a
 					>
 				{:else}

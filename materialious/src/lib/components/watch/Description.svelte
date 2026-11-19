@@ -1,14 +1,15 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { cleanNumber, numberWithCommas } from '$lib/numbers';
-	import { _ } from '$lib/i18n';
-	import type { VideoPlay } from '$lib/api/model';
+	import { cleanNumber, numberWithCommas } from '#lib/numbers';
+	import { _ } from '#lib/i18n/index';
+	import type { VideoPlay } from '#lib/api/model';
 	import { onMount } from 'svelte';
-	import { expandSummery } from '$lib/utils';
-	import { interfaceAutoExpandDesc } from '$lib/store';
-	import { humanizeTimestamp } from '$lib/time';
+	import { expandSummery } from '#lib/utils';
+	import { interfaceAutoExpandDesc } from '#lib/store';
+	import { humanizeTimestamp } from '#lib/time';
 
 	let { video, description }: { video: VideoPlay; description: string } = $props();
+	let open = $state(false);
 
 	onMount(() => {
 		if ($interfaceAutoExpandDesc) {
@@ -17,7 +18,7 @@
 	});
 </script>
 
-<details>
+<details bind:open>
 	<summary id="description" tabindex="0" class="bold none">
 		<nav>
 			<div class="max">
@@ -37,7 +38,7 @@
 		</nav>
 	</summary>
 	<div class="space"></div>
-	<div class="description">
+	<div class="description" class:lrud-ignore={!open}>
 		<div style="white-space: pre-line; overflow-wrap: break-word;">
 			<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 			{@html description}
@@ -49,7 +50,9 @@
 				<nav class="scroll">
 					{#each video.keywords as keyword (keyword)}
 						<a
-							href={resolve(`/search/[search]`, { search: encodeURIComponent(keyword) })}
+							href={resolve('/(app)/search/[searchQuery]', {
+								searchQuery: encodeURIComponent(keyword)
+							})}
 							class="chip">{keyword}</a
 						>
 					{/each}

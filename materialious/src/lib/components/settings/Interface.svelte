@@ -1,34 +1,32 @@
 <script lang="ts">
-	import { bookmarkletSaveToUrl } from '$lib/externalSettings/index';
-	import { letterCase, titleCases, type TitleCase } from '$lib/letterCasing';
+	import { resolve } from '$app/paths';
+	import ui from 'beercss';
+	import { bookmarkletSaveToUrl } from '#lib/externalSettings/index';
+	import { letterCase, titleCases, type TitleCase } from '#lib/letterCasing';
 	import { Capacitor } from '@capacitor/core';
 	import { iso31661 } from 'iso-3166';
-	import { _ } from '$lib/i18n';
-	import { get } from 'svelte/store';
-	import {
-		getMaterialiousBackendUrl,
-		isUnrestrictedPlatform,
-		remoteMaterialiousSupported
-	} from '$lib/backend';
-	import { timeout, isMobile } from '$lib/utils';
-	import { shareURL } from '$lib/download';
-	import { getPages, type Pages } from '$lib/navPages';
+	import { isContentRegion } from '#lib/regions';
+	import { _ } from '#lib/i18n/index';
+	import { isUnrestrictedPlatform, remoteMaterialiousSupported } from '#lib/backend';
+	import { timeout, isMobile } from '#lib/utils';
+	import { shareURL } from '#lib/download';
+	import { getPages, type Pages } from '#lib/navPages';
 	import {
 		setInvidiousInstance,
-		goToInvidiousLogin,
 		invidiousLogout,
 		setMaterialiousBackend,
 		removeMaterialiousBackend
-	} from '$lib/auth';
+	} from '#lib/auth';
 	import {
 		invidiousAuthStore,
 		backendInUseStore,
+		materialiousBackendStore,
 		invidiousInstanceStore,
-		interfaceAllowInsecureRequests,
 		interfaceAndroidUseNativeShare,
 		interfaceAutoExpandChapters,
 		interfaceAutoExpandComments,
 		interfaceAutoExpandDesc,
+		interfaceHideShorts,
 		interfaceDefaultPage,
 		interfaceDisableAutoUpdate,
 		interfaceForceCase,
@@ -40,20 +38,28 @@
 		interfacePreserveTranslation,
 		interfaceMobileBackButtonStore
 	} from '../../store';
-	import { isOwnBackend } from '$lib/shared';
+	import { isOwnBackend } from '#lib/shared/index';
 	import ComboBox from '../ComboBox.svelte';
-	import { corsProxyUrl } from '$lib/fetchProxy';
+	import AllowInsecureRequests from '../AllowInsecureRequests.svelte';
+	import LogoutButton from './LogoutButton.svelte';
 
-	let invidiousInstance = $state(get(invidiousInstanceStore));
+	let invidiousInstance = $derived($invidiousInstanceStore ?? '');
 
 	let invalidInstance = $state(false);
 
-	let materialiousBackend = $state(getMaterialiousBackendUrl());
+	function closeSettings() {
+		if (document.querySelector<HTMLDialogElement>('#dialog-settings')?.open) {
+			ui('#dialog-settings');
+		}
+	}
+
+	let materialiousBackend = $derived($materialiousBackendStore ?? '');
 
 	let invalidMaterialiousBackend = $state(false);
 
 	async function setMaterialiousInstance(event: Event) {
 		event.preventDefault();
+		if (!remoteMaterialiousSupported()) return;
 		invalidMaterialiousBackend = !(await setMaterialiousBackend(materialiousBackend));
 
 		if (invalidMaterialiousBackend) return;
@@ -63,6 +69,7 @@
 	}
 
 	async function removeMaterialiousInstance() {
+		if (!remoteMaterialiousSupported()) return;
 		await removeMaterialiousBackend();
 
 		await timeout(100);
@@ -84,24 +91,6 @@
 		await timeout(100);
 		location.reload();
 	}
-
-	function allowInsecureRequests() {
-		if (!Capacitor.isNativePlatform()) return;
-		interfaceAllowInsecureRequests.set(!$interfaceAllowInsecureRequests);
-	}
-
-	// Used to toggle rejectUnauthorized in the backend
-	interfaceAllowInsecureRequests.subscribe(async (isAllowed) => {
-		if (Capacitor.getPlatform() === 'android') {
-			if (isAllowed) {
-				await fetch(corsProxyUrl + 'allow-insecure-requests');
-			} else {
-				await fetch(corsProxyUrl + 'deny-insecure-requests');
-			}
-		} else if (Capacitor.getPlatform() === 'electron') {
-			await window.electronAPI.setAllowInsecureSSL(isAllowed);
-		}
-	});
 
 	if (Capacitor.getPlatform() === 'electron') {
 		interfaceDisableAutoUpdate.subscribe((isDisabled) => {
@@ -140,7 +129,7 @@
 						name="invidious-instance"
 						type="text"
 					/>
-					<label tabindex="-1" for="invidious-instance">{$_('layout.instanceUrl')}</label>
+					<label tabindex="-1" for="invidious-instance">{$_('invidiousInstance')}</label>
 					{#if invalidInstance}
 						<span class="error">{$_('invalidInstance')}</span>
 					{/if}
@@ -150,42 +139,41 @@
 				</button>
 			</nav>
 		</form>
-		{#if isOwnBackend()?.internalAuth && $invidiousInstanceStore}
-			{#if !$invidiousAuthStore}
-				<button class="surface-container-highest" onclick={goToInvidiousLogin}>
-					<i>link</i>
-					<span>{$_('linkInvidious')}</span>
-				</button>
-			{:else}
-				<button class="surface-container-highest" onclick={invidiousLogout}>
-					<i>link_off</i>
-					<span>{$_('unlinkInvidious')}</span>
-				</button>
+		<nav class="wrap">
+			<LogoutButton class={isMobile() ? '' : 's'} />
+			{#if (isOwnBackend()?.internalAuth || $materialiousBackendStore) && $invidiousInstanceStore}
+				{#if !$invidiousAuthStore}
+					<a
+						class="button surface-container-highest"
+						href={resolve('/(app)/login/invidious')}
+						onclick={closeSettings}
+					>
+						<i>link</i>
+						<span>{$_('linkInvidious')}</span>
+					</a>
+				{:else}
+					<button
+						class="surface-container-highest"
+						onclick={async () => {
+							closeSettings();
+							await invidiousLogout();
+						}}
+					>
+						<i>link_off</i>
+						<span>{$_('unlinkInvidious')}</span>
+					</button>
+				{/if}
 			{/if}
-			<div class="space"></div>
-		{/if}
+		</nav>
+		<div class="space"></div>
 	{:else}
+		<LogoutButton class={isMobile() ? '' : 's'} />
 		<div class="space"></div>
 	{/if}
 
-	{#if Capacitor.isNativePlatform() && (invalidInstance || $interfaceAllowInsecureRequests)}
-		<div class="field no-margin">
-			<nav class="no-padding">
-				<div class="max">
-					<div>{$_('layout.allowInsecureRequests')}</div>
-				</div>
-				<label class="switch" tabindex="0">
-					<input
-						type="checkbox"
-						bind:checked={$interfaceAllowInsecureRequests}
-						onclick={allowInsecureRequests}
-						role="switch"
-					/>
-					<span></span>
-				</label>
-			</nav>
-		</div>
-	{/if}
+	<AllowInsecureRequests show={invalidInstance || invalidMaterialiousBackend} />
+{:else}
+	<LogoutButton class={isMobile() ? '' : 's'} />
 {/if}
 
 {#if remoteMaterialiousSupported()}
@@ -333,6 +321,23 @@
 <div class="field no-margin">
 	<nav class="no-padding">
 		<div class="max">
+			<div>{$_('layout.hideShorts')}</div>
+		</div>
+		<label class="switch" tabindex="0">
+			<input
+				type="checkbox"
+				bind:checked={$interfaceHideShorts}
+				onclick={() => interfaceHideShorts.set(!$interfaceHideShorts)}
+				role="switch"
+			/>
+			<span></span>
+		</label>
+	</nav>
+</div>
+
+<div class="field no-margin">
+	<nav class="no-padding">
+		<div class="max">
 			<div>{$_('layout.preserveTranslation')}</div>
 		</div>
 		<label class="switch" tabindex="0">
@@ -407,12 +412,14 @@
 <ComboBox
 	label={$_('region')}
 	defaultValue={$interfaceRegionStore}
-	options={iso31661.map((region) => {
-		return {
-			label: region.name,
-			value: region.alpha2
-		};
-	})}
+	options={iso31661
+		.filter((region) => isContentRegion(region.alpha2))
+		.map((region) => {
+			return {
+				label: region.name,
+				value: region.alpha2
+			};
+		})}
 	onChange={(value) => interfaceRegionStore.set(value)}
 />
 
