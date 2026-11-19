@@ -151,7 +151,8 @@ find every change).
   The TV page asks for a mode at the current resolution whose rate is an exact
   multiple of the track's fps (prefer the current mode, then the highest),
   and resets on leaving. YouTube reports whole-number fps, so 23.976 content
-  gets 24 Hz. Setting `bixMatchFrameRate` in `src/lib/stores/player.ts`.
+  gets 24 Hz. Setting `bixMatchFrameRate` in `src/lib/stores/player.ts`,
+  which defaults to off: the mode switch on load froze playback on the Shield.
 - **D-pad in the TV panel** — same page: Up/Down go to the nearest row,
   Left/Right along the row (upstream walked a flat list).
 - **App user agent** — `static/nodejsAndroid/index.js` (the in-app proxy
