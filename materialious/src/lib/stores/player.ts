@@ -7,8 +7,9 @@ import type { ParsedDescription } from '../description';
 export const playerAutoPlayStore = persist(writable(true), createStorage(), 'autoPlay');
 export const playerAlwaysLoopStore = persist(writable(false), createStorage(), 'alwaysLoop');
 // bix: switch the TV's refresh rate to suit each video (TV player only).
+// Off by default: the mode switch on load froze playback on the Shield.
 export const playerMatchFrameRateStore = persist(
-	writable(true),
+	writable(false),
 	createStorage(),
 	'bixMatchFrameRate'
 );
