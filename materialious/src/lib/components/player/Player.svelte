@@ -164,6 +164,7 @@
 	let playerLoadedListenerAdded = false;
 	let sponsorSkipListenerAdded = false;
 	let sponsorBlockCategoriesWaiting = false;
+	const sponsorSkipLogged = new Set<number>();
 
 	const STALL_CHECK_INTERVAL_MS = 1_000;
 	const STALL_TIMEOUT_MS = 12_000;
@@ -319,6 +320,9 @@
 			console.error('Sponsorskip errored with:', error);
 		}
 
+		reportPlaybackLog(
+			`sponsorblock: ${segments.length} segments for categories ${sponsorBlockCategoryKeys.join(',')}`
+		);
 		if (segments.length === 0) return;
 
 		if (sponsorSkipListenerAdded) return;
@@ -333,6 +337,12 @@
 					playerElement.currentTime <= segment.endTime
 				) {
 					const segmentTrigger = $sponsorBlockCategoriesStore[segment.category];
+					if (segmentTrigger === 'automatic' && !sponsorSkipLogged.has(segment.startTime)) {
+						sponsorSkipLogged.add(segment.startTime);
+						reportPlaybackLog(
+							`sponsorblock: skipping ${segment.category} from ${segment.startTime.toFixed(1)}s to ${segment.endTime.toFixed(1)}s`
+						);
+					}
 
 					if (segmentTrigger === 'automatic') {
 						skipSegment(segment);
