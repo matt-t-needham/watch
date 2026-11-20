@@ -180,6 +180,9 @@
 	// bix: the clock can keep running while no new picture is drawn (a black screen), which
 	// the time check alone never sees. Track decoded frames as well.
 	let stallWatchdogFrames = -1;
+	let stallWatchdogDropped = 0;
+	let stallWatchdogDropLogAt = 0;
+	let pauseLogAt = 0;
 	// True from the first stall recovery until playback resumes. While it is set, a paused
 	// element is not a deliberate pause (recovery itself can pause it), so the watchdog keeps checking.
 	let stallRecoveryActive = false;
@@ -554,6 +557,9 @@
 		if (isDestroyed || error?.code === shaka.util.Error.Code.OPERATION_ABORTED || error?.handled)
 			return;
 		console.error('Player error:', error);
+		reportPlaybackLog(
+			`player error code=${error?.code} severity=${error?.severity} category=${error?.category}: ${error?.message ?? ''}`
+		);
 
 		if (error?.severity !== shaka.util.Error.Severity.CRITICAL) return;
 		if (isRetryableStreamingError(error)) {
@@ -613,6 +619,15 @@
 				? playerElement.getVideoPlaybackQuality()
 				: undefined;
 		if (quality) {
+			// Dropped frames: a picture that keeps moving but skips a lot is jerky playback.
+			const dropped = quality.droppedVideoFrames;
+			if (dropped - stallWatchdogDropped > 60 && now - stallWatchdogDropLogAt > 15_000) {
+				reportPlaybackLog(
+					`jerky: ${dropped - stallWatchdogDropped} frames dropped in the last 5s (total ${dropped})`
+				);
+				stallWatchdogDropLogAt = now;
+			}
+			stallWatchdogDropped = dropped;
 			const frames = quality.totalVideoFrames;
 			if (frames !== stallWatchdogFrames) {
 				stallWatchdogFrames = frames;
@@ -1475,7 +1490,10 @@
 			if (!playerElement?.ended && Date.now() - lastUserInputAt > 2_000) {
 				// The player paused without the viewer asking: treat it as a stall so the watchdog checks it.
 				stallRecoveryActive = true;
-				reportPlaybackLog('playback paused without a viewer action; checking for a stall');
+				if (Date.now() - pauseLogAt > 30_000) {
+					reportPlaybackLog('playback paused without a viewer action; checking for a stall');
+					pauseLogAt = Date.now();
+				}
 			}
 			playerCurrentPlaybackState = false;
 			playerIsBuffering = false;

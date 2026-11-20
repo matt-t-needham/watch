@@ -126,6 +126,10 @@ function proxyRequest(clientReq, clientRes, parsedUrl, body = null, redirectCoun
 	}
 
 	const proxyReq = httpClient.request(parsedUrl, proxyOptions, (proxyRes) => {
+		// Errors from YouTube/Google are logged with the host and status only (no path or query).
+		if (proxyRes.statusCode >= 400) {
+			console.error(`PLAYBACK proxy http ${parsedUrl.hostname} status=${proxyRes.statusCode}`);
+		}
 		// Handle redirects normally if redirectAllowed
 		if (
 			proxyRes.statusCode >= 300 &&
