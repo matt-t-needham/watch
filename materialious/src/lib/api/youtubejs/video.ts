@@ -333,6 +333,9 @@ export async function continueVideoPlayerYTjs(videoId: string): Promise<{
 			dashUri = video.streaming_data.hls_manifest_url
 				? video.streaming_data.hls_manifest_url
 				: `${video.streaming_data.dash_manifest_url}/mpd_version/7`;
+		} else if (Capacitor.getPlatform() === 'android' && video.streaming_data.hls_manifest_url) {
+			// bix experiment: YouTube's HLS manifest for VOD on the TV (see usesHlsForVod).
+			dashUri = video.streaming_data.hls_manifest_url;
 		} else {
 			const manifest = await video.toDash({
 				manifest_options: {

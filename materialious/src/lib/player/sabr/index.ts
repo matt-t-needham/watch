@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import type { VideoPlay } from '#lib/api/model';
 import {
 	SabrStreamingAdapter,
@@ -16,8 +17,20 @@ const ATTESTATION_RETRIES = 3;
 const PLAYER_RELOAD_RETRIES = 3;
 const PO_TOKEN_REFRESH_COOLDOWN_MS = 15_000;
 
+// bix experiment: VOD on Android uses the HLS manifest when YouTube provides one.
+export function usesHlsForVod(video: VideoPlay): boolean {
+	return (
+		Capacitor.getPlatform() === 'android' &&
+		!video.liveNow &&
+		!video.ytjs?.video.basic_info.is_live &&
+		!!video.ytjs?.video.streaming_data?.hls_manifest_url
+	);
+}
+
 function usesManifestPlayback(video: VideoPlay): boolean {
 	const info = video.ytjs?.video;
+	// Experiment (bix): on Android, VOD plays from YouTube's own HLS manifest when it has one.
+	if (usesHlsForVod(video)) return true;
 	return !!(
 		video.liveNow ||
 		info?.basic_info.is_live ||
