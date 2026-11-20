@@ -163,10 +163,15 @@
 	let sabrSegmentActive = false;
 	let playerLoadedListenerAdded = false;
 	let sponsorSkipListenerAdded = false;
+	let sponsorBlockCategoriesWaiting = false;
 
 	const STALL_CHECK_INTERVAL_MS = 1_000;
 	const STALL_TIMEOUT_MS = 12_000;
-	const MAX_STALL_RECOVERY_ATTEMPTS = 3;
+	const MAX_STALL_RECOVERY_ATTEMPTS = 4;
+	// After a stall that survives the first attempts, the next load caps the picture one step lower
+	// (the stop message suggests a lower quality). Only for the video that stalled.
+	let stallQualityCapHeight: number | undefined;
+	let stallQualityCapVideoId: string | undefined;
 	const MAX_STREAMING_FAILURE_RETRIES = 5;
 
 	let stallWatchdogInterval: ReturnType<typeof setInterval> | undefined;
@@ -288,7 +293,19 @@
 
 		const sponsorBlockCategoryKeys = Object.keys($sponsorBlockCategoriesStore);
 
-		if (sponsorBlockCategoryKeys.length === 0) return;
+		if (sponsorBlockCategoryKeys.length === 0) {
+			// The categories sync from the server after a direct load (Watch on TV opens the TV
+			// route straight away). Wait for them and set up skipping then, instead of never.
+			if (sponsorBlockCategoriesWaiting) return;
+			sponsorBlockCategoriesWaiting = true;
+			const stop = sponsorBlockCategoriesStore.subscribe((categories) => {
+				if (Object.keys(categories).length === 0) return;
+				sponsorBlockCategoriesWaiting = false;
+				stop();
+				void setupSponsorSkip();
+			});
+			return;
+		}
 
 		try {
 			segments = await sponsorBlock.getSegments(
@@ -673,6 +690,23 @@
 				await withRecoveryTimeout(refreshSabrSession(data.video));
 				if (isDestroyed || data.video.videoId !== videoId) return;
 				player.retryStreaming(0);
+			} else if (stallRecoveryAttempts === 3) {
+				// The stop message suggests a lower quality: cap the picture one step down and reload.
+				const heights = player
+					.getVideoTracks()
+					.map((track) => track.height)
+					.filter((height): height is number => typeof height === 'number');
+				const current =
+					player.getVideoTracks().find((track) => track.active)?.height ?? Math.max(0, ...heights);
+				const lower = heights.filter((height) => height < current).sort((a, b) => b - a)[0];
+				if (lower) {
+					stallQualityCapHeight = lower;
+					stallQualityCapVideoId = videoId;
+					reportPlaybackLog(
+						`stall: lowering the picture to ${lower}p and reloading at the same point`
+					);
+				}
+				await withRecoveryTimeout(reloadVideo(playerElement.currentTime));
 			} else if (stallRecoveryAttempts < MAX_STALL_RECOVERY_ATTEMPTS) {
 				// Rebuilding playback obtains fresh session data and mints its own token.
 				// A failed standalone refresh must not prevent that escalation.
@@ -1170,7 +1204,12 @@
 					maxPixels: isAndroidTv()
 						? Math.round(screen.width * devicePixelRatio) *
 							Math.round(screen.height * devicePixelRatio)
-						: Infinity
+						: Infinity,
+					// Set only after a stall on this video (see recoverFromStall).
+					maxHeight:
+						stallQualityCapHeight && stallQualityCapVideoId === data.video.videoId
+							? stallQualityCapHeight
+							: Infinity
 				},
 				// SABR servers pace delivery by the client's reported bandwidth
 				// estimate; a low anchor throttles high resolutions to ~9 Mbps even on
