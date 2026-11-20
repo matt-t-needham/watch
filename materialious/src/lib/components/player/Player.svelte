@@ -178,6 +178,9 @@
 	// True from the first stall recovery until playback resumes. While it is set, a paused
 	// element is not a deliberate pause (recovery itself can pause it), so the watchdog keeps checking.
 	let stallRecoveryActive = false;
+	// Last time the viewer pressed a key or touched the screen. A pause with no recent input
+	// was not asked for by the viewer: the player paused itself, so it counts as a stall.
+	let lastUserInputAt = 0;
 	let stallWatchdogFrameProgress = Date.now();
 	const FRAME_STALL_TIMEOUT_MS = 20_000;
 	let stallRecoveryAttempts = 0;
@@ -1424,7 +1427,17 @@
 			showPlayerUI();
 		});
 
+		const markUserInput = () => {
+			lastUserInputAt = Date.now();
+		};
+		document.addEventListener('keydown', markUserInput, true);
+		document.addEventListener('pointerdown', markUserInput, true);
 		playerElement?.addEventListener('pause', async () => {
+			if (!playerElement?.ended && Date.now() - lastUserInputAt > 2_000) {
+				// The player paused without the viewer asking: treat it as a stall so the watchdog checks it.
+				stallRecoveryActive = true;
+				reportPlaybackLog('playback paused without a viewer action; checking for a stall');
+			}
 			playerCurrentPlaybackState = false;
 			playerIsBuffering = false;
 			savePlayerbackHistory();
