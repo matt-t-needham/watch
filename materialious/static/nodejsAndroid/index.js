@@ -279,6 +279,12 @@ const server = http.createServer((req, res) => {
 		return res.end('Unauthorized Materialious session');
 	}
 
+	// Playback log: the app reports stopped playback here; it goes to logcat at error level.
+	if (req.method === 'GET' && req.url?.startsWith('/playback-log?')) {
+		console.error('PLAYBACK ' + decodeURIComponent(req.url.slice(14)).slice(0, 300));
+		res.writeHead(200);
+		return res.end();
+	}
 	if (!req.url || req.url === '/') {
 		res.writeHead(400, { 'Content-Type': 'text/plain' });
 		return res.end('No URL provided.');

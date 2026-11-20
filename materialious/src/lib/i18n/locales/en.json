@@ -264,7 +264,9 @@
 			"subtitleOffset": "Subtitle timing",
 			"textShadow": "Text shadow",
 			"reset": "Reset defaults"
-		}
+		},
+		"playbackErrorStall": "Playback stopped: the picture stopped updating while the video kept running.",
+		"playbackErrorStallHint": "Likely cause: the video server stopped answering the stream. Try Retry, or start the video again from the grid. A lower quality in the player settings can also help."
 	},
 	"quickConnect": {
 		"title": "Quick connect",

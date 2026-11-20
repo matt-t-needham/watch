@@ -20,6 +20,23 @@ function proxyAuthToken(): string | undefined {
 }
 
 export const originalFetch = window.fetch;
+
+// Playback log: every failure is written to the console and, on Android, to the in-app
+// proxy's log (logcat). Keep messages free of video IDs and personal data.
+export function reportPlaybackLog(message: string): void {
+	console.error(`[playback] ${message}`);
+	if (Capacitor.getPlatform() !== 'android') return;
+	// Best-effort: a failed log write must never affect playback. The proxy requires the
+	// session header, so the write carries it; a failure is still reported to the console.
+	void getNativeProxyToken()
+		.then((token) =>
+			originalFetch(corsProxyUrl + 'playback-log?' + encodeURIComponent(message.slice(0, 300)), {
+				headers: { [TOKEN_HEADER]: token }
+			})
+		)
+		.catch((error) => console.error('[playback] could not write the playback log:', error));
+}
+
 export const corsProxyUrl =
 	Capacitor.getPlatform() === 'android'
 		? 'http://localhost:3000/'

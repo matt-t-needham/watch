@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { getBestThumbnail } from '#lib/images';
 	import { videoLength } from '#lib/numbers';
+	import { reportPlaybackLog } from '#lib/fetchProxy';
 	import { generateChapterWebVTT, type ParsedDescription } from '#lib/description';
 	import { Capacitor, SystemBars, SystemBarsStyle, SystemBarType } from '@capacitor/core';
 	import Mousetrap from 'mousetrap';
@@ -144,7 +145,7 @@
 		}
 	}
 
-	type PlaybackErrorSource = 'sabr' | 'invidious' | 'youtubejs' | 'unknown';
+	type PlaybackErrorSource = 'sabr' | 'invidious' | 'youtubejs' | 'stall' | 'unknown';
 
 	interface PlaybackError {
 		source: PlaybackErrorSource;
@@ -171,6 +172,14 @@
 	let stallWatchdogInterval: ReturnType<typeof setInterval> | undefined;
 	let stallWatchdogLastTime = 0;
 	let stallWatchdogLastProgress = Date.now();
+	// bix: the clock can keep running while no new picture is drawn (a black screen), which
+	// the time check alone never sees. Track decoded frames as well.
+	let stallWatchdogFrames = -1;
+	// True from the first stall recovery until playback resumes. While it is set, a paused
+	// element is not a deliberate pause (recovery itself can pause it), so the watchdog keeps checking.
+	let stallRecoveryActive = false;
+	let stallWatchdogFrameProgress = Date.now();
+	const FRAME_STALL_TIMEOUT_MS = 20_000;
 	let stallRecoveryAttempts = 0;
 	let stallRecoveryInProgress = false;
 	let lastStallRecoveryAt = 0;
@@ -377,6 +386,8 @@
 		switch (source) {
 			case 'sabr':
 				return $_('player.playbackErrorSabr');
+			case 'stall':
+				return $_('player.playbackErrorStall');
 			case 'invidious':
 				return $_('player.playbackErrorInvidious');
 			case 'youtubejs':
@@ -424,6 +435,7 @@
 	function reportPlaybackError(source: PlaybackErrorSource, error: unknown) {
 		if (isDestroyed) return;
 		console.error(`[Player] ${source} playback failed:`, error);
+		reportPlaybackLog(`${source} playback failed: ${errorDetail(error)}`);
 
 		// Stop all automatic recovery loops; the user is now in control.
 		streamingFailureExhausted = true;
@@ -540,6 +552,8 @@
 
 		stallWatchdogLastTime = playerElement?.currentTime ?? 0;
 		stallWatchdogLastProgress = Date.now();
+		stallWatchdogFrames = -1;
+		stallWatchdogFrameProgress = Date.now();
 		stallWatchdogInterval = setInterval(checkForStall, STALL_CHECK_INTERVAL_MS);
 	}
 
@@ -558,7 +572,9 @@
 		)
 			return;
 
-		if (playerElement.paused || playerElement.seeking || playerElement.ended) {
+		// A seek that never completes is a stall too (a reload seeks, and when no media
+		// arrives the seek hangs). Only deliberate pauses and the end of the video are exempt.
+		if ((playerElement.paused && !stallRecoveryActive) || playerElement.ended) {
 			stallWatchdogLastProgress = Date.now();
 			return;
 		}
@@ -570,6 +586,31 @@
 
 		const now = Date.now();
 		const currentTime = playerElement.currentTime;
+
+		// Frames only exist on video elements; audio-only media has nothing to check here.
+		const quality =
+			playerElement instanceof HTMLVideoElement
+				? playerElement.getVideoPlaybackQuality()
+				: undefined;
+		if (quality) {
+			const frames = quality.totalVideoFrames;
+			if (frames !== stallWatchdogFrames) {
+				stallWatchdogFrames = frames;
+				stallWatchdogFrameProgress = now;
+			} else if (now - stallWatchdogFrameProgress > FRAME_STALL_TIMEOUT_MS) {
+				// The clock runs but no new frame has been drawn: log it, then recover or show the error.
+				reportPlaybackLog(
+					`stall: picture not updating for ${Math.round((now - stallWatchdogFrameProgress) / 1000)}s while the clock runs (t=${currentTime.toFixed(1)}, frames=${frames}, seeking=${playerElement.seeking})`
+				);
+				stallWatchdogFrameProgress = now;
+				if (stallRecoveryAttempts >= MAX_STALL_RECOVERY_ATTEMPTS) {
+					reportPlaybackError('stall', new Error($_('player.playbackErrorStallHint')));
+					return;
+				}
+				void recoverFromStall(false);
+				return;
+			}
+		}
 
 		if (Math.abs(currentTime - stallWatchdogLastTime) > 0.05) {
 			stallWatchdogLastTime = currentTime;
@@ -591,31 +632,50 @@
 		void recoverFromStall(idleSabr);
 	}
 
+	// A recovery step that never settles must not block the watchdog for good: the
+	// watchdog skips every check while a recovery is in progress.
+	const RECOVERY_STEP_TIMEOUT_MS = 20_000;
+	function withRecoveryTimeout<T>(step: Promise<T>): Promise<T> {
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const limit = new Promise<never>((_, reject) => {
+			timer = setTimeout(
+				() => reject(new Error('Stall recovery step timed out')),
+				RECOVERY_STEP_TIMEOUT_MS
+			);
+		});
+		return Promise.race([step, limit]).finally(() => clearTimeout(timer));
+	}
+
 	async function recoverFromStall(idleSabr = false) {
 		if (isDestroyed || !player || !playerElement) return;
 		const videoId = data.video.videoId;
 
 		stallRecoveryInProgress = true;
+		stallRecoveryActive = true;
 		stallRecoveryAttempts++;
 		lastStallRecoveryAt = Date.now();
 		stallWatchdogLastProgress = Date.now();
 
 		console.warn(`[Player] Playback stalled, recovery attempt ${stallRecoveryAttempts}`);
+		reportPlaybackLog(
+			`stall recovery attempt ${stallRecoveryAttempts} of ${MAX_STALL_RECOVERY_ATTEMPTS}`
+		);
 
 		try {
 			if (idleSabr && stallRecoveryAttempts === 1) {
-				if (!player.retryStreaming(0)) await reloadVideo(playerElement.currentTime);
+				if (!player.retryStreaming(0))
+					await withRecoveryTimeout(reloadVideo(playerElement.currentTime));
 			} else if (stallRecoveryAttempts === 1) {
 				// Refresh attestation/PoToken first, then let Shaka refetch.
-				await refreshSabrSession(data.video);
+				await withRecoveryTimeout(refreshSabrSession(data.video));
 				if (isDestroyed || data.video.videoId !== videoId) return;
 				player.retryStreaming(0);
 			} else if (stallRecoveryAttempts < MAX_STALL_RECOVERY_ATTEMPTS) {
 				// Rebuilding playback obtains fresh session data and mints its own token.
 				// A failed standalone refresh must not prevent that escalation.
-				await reloadVideo(playerElement.currentTime);
+				await withRecoveryTimeout(reloadVideo(playerElement.currentTime));
 			} else {
-				reportPlaybackError(currentPlaybackErrorSource(), new Error('Playback stalled'));
+				reportPlaybackError('stall', new Error($_('player.playbackErrorStallHint')));
 			}
 		} catch (error) {
 			if (isDestroyed || data.video.videoId !== videoId) return;
@@ -626,6 +686,12 @@
 			}
 		} finally {
 			stallRecoveryInProgress = false;
+			if (!isDestroyed && playerElement && playerElement.paused && !playerElement.ended) {
+				// Recovery may have paused the element; resume it so the retry can play.
+				playerElement
+					.play()
+					.catch((error) => reportPlaybackLog(`stall resume failed: ${errorDetail(error)}`));
+			}
 			stallWatchdogLastProgress = Date.now();
 			stallWatchdogLastTime = playerElement?.currentTime ?? 0;
 		}
@@ -1374,6 +1440,7 @@
 		});
 
 		playerElement?.addEventListener('playing', async () => {
+			stallRecoveryActive = false;
 			playerCurrentPlaybackState = true;
 			playerIsBuffering = false;
 			if (Capacitor.getPlatform() === 'android') {
