@@ -70,8 +70,7 @@ dashboard's Redeploy button. The TV app is never built nightly.
    APK (anything that reaches the TV, including `android/` and
    `static/nodejsAndroid/`), usually both.
 4. Add a line to **Patches** below for anything new.
-5. Commit (short, plain messages; the user commits or asks Claude to) and
-   `git push`. The nightly restart deploys whatever is on `origin/main` to
+5. Commit and `git push`. The nightly restart deploys whatever is on `origin/main` to
    the web server, so don't push web changes you haven't checked.
 
 **Taking a new upstream release**
