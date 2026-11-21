@@ -70,8 +70,7 @@ dashboard's Redeploy button. The TV app is never built nightly.
    APK (anything that reaches the TV, including `android/` and
    `static/nodejsAndroid/`), usually both.
 4. Add a line to **Patches** below for anything new.
-5. Commit (short, plain messages; the user commits or asks Claude to) and
-   `git push`. The nightly restart deploys whatever is on `origin/main` to
+5. Commit and `git push`. The nightly restart deploys whatever is on `origin/main` to
    the web server, so don't push web changes you haven't checked.
 
 **Taking a new upstream release**
@@ -219,3 +218,17 @@ find every change).
 - SponsorBlock does nothing until categories are chosen (upstream default:
   none). They sync per account (`sponsorBlockCategoriesv2`). "Manual" segments
   offer Skip in a toast, which the D-pad may not reach — use "automatic" on TV.
+
+## Deployment
+
+Port 3013: watch (watch.bix.computer) — Materialious YouTube frontend, built
+from our fork (`materialious/`, `FullDockerfile`), behind `watch-proxy` (stock
+nginx, `nginx/watch.conf`) which holds the port and writes
+`logs/watch/access.log`; own login (SQLite) + Cloudflare Access with a home-IP
+bypass for the TV app; data in `/home/matt/materialious/data` (outside the
+apps tree); own `watch` network with egress. `MATERIALIOUS_REGISTRATION=true
+docker compose up -d watch` opens sign-up; a plain `up -d` closes it.
+watch-proxy's log masks personal data (what was watched, searched or
+subscribed to, history and quick-connect IDs, proxied stream URLs; no referer)
+via `$watch_log_path` in `nginx/watch.conf`. The old `watch_tv/` TV feed and
+its `/tv/` route were retired and deleted.
